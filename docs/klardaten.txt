@@ -1,0 +1,12 @@
+DATEVconnect ​Copy link
+Our gateway acts as a reverse proxy for DATEVconnect (DATEV’s official Desktop API). It supports the DATEVconnect modules exposed by your DATEV environment and license.
+
+DATEV’s documentation is the source of truth for endpoints, parameters, and request/response schemas: https://developer.datev.de/en/products (tab Desktop APIs)
+
+URL mapping:
+
+Local DATEVconnect: http://localhost:58454/datev/api/<DATEVCONNECT_PATH>
+Via Klardaten: https://api.klardaten.com/datevconnect/<DATEVCONNECT_PATH>
+Example: http://localhost:58454/datev/api/master-data/v1/clients → https://api.klardaten.com/datevconnect/master-data/v1/clients
+
+The gateway forwards the HTTP method, path, query string, and body (and relevant headers) to DATEVconnect.

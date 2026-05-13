@@ -1,3 +1,53 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# --- Build / packaging ---
+build/
+dist/
+*.egg-info/
+*.egg
+wheels/
+.eggs/
+
+# --- Virtual envs ---
+.venv/
+venv/
+env/
+ENV/
+
+# --- Tooling caches ---
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.tox/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+.hypothesis/
+
+# --- Secrets / env files ---
+.env
+.env.*
+!.env.example
+.envrc
+
+# --- IDEs / editors ---
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# --- uv ---
+# (uv.lock IS committed; only ignore transient lock-backup files)
+uv.lock.tmp
+
 # --- Claude Code (added by claude-autonomy skill) ---
 .claude/settings.local.json
 .claude/.credentials.json

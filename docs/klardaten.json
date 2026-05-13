@@ -1,0 +1,3941 @@
+{
+  "openapi": "3.0.0",
+  "paths": {
+    "/api/auth/register": {
+      "post": {
+        "operationId": "AuthController_register",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateUserDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Account created successfully. Returns access and refresh tokens.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthTokensResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input - check email format and password strength"
+          },
+          "409": {
+            "description": "Email already registered"
+          }
+        },
+        "summary": "Register a new user",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/login": {
+      "post": {
+        "description": "Authenticate with your email and password.\n\nResponse depends on your account's MFA configuration:\n\n**Case 1: No MFA enabled**\n- Immediate response with access and refresh tokens\n- Use tokens for all subsequent API requests\n\n**Case 2: MFA enabled (TOTP and/or Passkeys)**\n- Response contains a challenge and available MFA methods\n- Choose to verify with TOTP code OR passkey\n- Send your verification to one of these endpoints:\n  - POST /api/auth/mfa/challenges/{challengeId}/totp (for 6-digit code)\n  - POST /api/auth/mfa/challenges/{challengeId}/passkey (for passkey)\n- After successful MFA, you'll receive your tokens\n\nThe challenge remains valid for 5 minutes.",
+        "operationId": "AuthController_login",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateUserDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Login successful (no MFA required). Returns access and refresh tokens.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthTokensResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid email or password"
+          }
+        },
+        "summary": "Login with email and password",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/password/change": {
+      "post": {
+        "description": "Update your account password.",
+        "operationId": "AuthController_changePassword",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangePasswordDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Password changed successfully."
+          },
+          "400": {
+            "description": "Invalid password - weak or same as current password"
+          },
+          "401": {
+            "description": "Unauthorized or current password incorrect"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Change your password",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/mfa/totp/enroll": {
+      "post": {
+        "description": "Set up Time-based One-Time Password (TOTP) authentication on your account.\n\nThis is the first step to enable TOTP. It generates a secret and returns:\n- A QR code URI to scan with your authenticator app\n- A challenge ID needed for the next step\n\nRecommended authenticators: Apple Password, Google Authenticator, Microsoft Authenticator.\n\nNext: Scan the QR code or enter the secret in your app, then verify with POST /mfa/totp/verify.",
+        "operationId": "AuthController_startTotpEnrollment",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "TOTP setup initiated. Returns QR code URI and secret for backup.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TotpEnrollmentResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized - invalid token"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Start TOTP enrollment",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/mfa/totp/verify": {
+      "post": {
+        "description": "Complete TOTP setup by verifying a code from your authenticator app.\n\nAfter initializing TOTP with POST /mfa/totp/enroll:\n1. Scan the QR code in your authenticator app\n2. Wait for a 6-digit code to appear\n3. Send that code here to activate TOTP\n\nRequirements:\n- Valid 6-digit code from your authenticator (changes every 30 seconds)\n- Challenge ID from the enrollment step (expires after 10 minutes)\n- Must be done within ~1 minute of the code appearing\n\nOnce confirmed: TOTP will be required at every login as your second factor.",
+        "operationId": "AuthController_verifyTotpEnrollment",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyTotpEnrollmentDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "TOTP successfully enabled. It will be required for future logins."
+          },
+          "401": {
+            "description": "Invalid TOTP code (incorrect 6-digit code) or expired challenge (enrollment expired)"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Confirm TOTP enrollment",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/mfa/totp": {
+      "delete": {
+        "description": "Remove TOTP authentication from your account.",
+        "operationId": "AuthController_disableTotp",
+        "parameters": [],
+        "responses": {
+          "204": {
+            "description": "TOTP disabled successfully."
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Disable TOTP",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/mfa/passkeys": {
+      "get": {
+        "description": "View all passkeys registered to your account.",
+        "operationId": "AuthController_listPasskeys",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Array of all passkeys registered to this account",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PasskeyListResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List your passkeys",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/mfa/passkeys/options": {
+      "post": {
+        "description": "Begin the process of registering a new passkey.\n\nWorkflow:\n1. Call this endpoint to get WebAuthn registration options\n2. Your device will prompt you to authenticate (touch, face, PIN, or button press)\n3. Send the response to POST /mfa/passkeys/verify to complete registration\n\nOptional: Give your passkey a friendly name like \"Work YubiKey\" or \"iPhone Face ID\" to easily identify it later.",
+        "operationId": "AuthController_generatePasskeyRegistrationOptions",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PasskeyRegistrationOptionsRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "WebAuthn registration options - ready to use with your authenticator",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PasskeyRegistrationOptionsResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Start passkey registration",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/mfa/passkeys/verify": {
+      "post": {
+        "description": "Finalize passkey registration by verifying your authenticator's response.\n\nAfter calling POST /mfa/passkeys/options and authenticating with your device:\n1. Your device provides a signed response\n2. Send that response here to register the credential\n3. The server verifies it's legitimate and stores your public key\n\nResponse: Your updated list of all passkeys including this new one.",
+        "operationId": "AuthController_verifyPasskeyRegistration",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyPasskeyRegistrationDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Passkey registered! Returns list of all your passkeys.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PasskeyListResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Registration failed - verification error or invalid response"
+          },
+          "401": {
+            "description": "Unauthorized or challenge expired"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Complete passkey registration",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/mfa/passkeys/{passkeyId}": {
+      "delete": {
+        "description": "Delete a passkey from your account.",
+        "operationId": "AuthController_deletePasskey",
+        "parameters": [
+          {
+            "name": "passkeyId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Passkey deleted successfully."
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Passkey not found"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Remove a passkey",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/mfa/challenges/{challengeId}/totp": {
+      "post": {
+        "description": "Finish logging in by providing your 6-digit authenticator code.\n\nWhen you log in with email/password and TOTP is enabled, you receive a challenge. Complete it by:\n1. Finding the 6-digit code in your authenticator app\n2. Sending it here with the challenge ID\n\nSuccess: You'll receive access and refresh tokens to use the API.",
+        "operationId": "AuthController_completeTotpChallenge",
+        "parameters": [
+          {
+            "name": "challengeId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyTotpCodeDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Login successful. Use tokens for API requests.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthTokensResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "TOTP is not enabled for this challenge (challenge requires passkey instead)"
+          },
+          "401": {
+            "description": "Invalid TOTP code, missing/expired challenge, or TOTP not configured for user"
+          }
+        },
+        "summary": "Complete login with TOTP",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/mfa/challenges/{challengeId}/passkey": {
+      "post": {
+        "description": "Finish logging in by authenticating with your passkey.\n\nWhen you log in with email/password and passkeys are enabled, you receive a challenge. Complete it by:\n1. Using your browser's WebAuthn API with the provided options\n2. Authenticating with your device (touch key, biometric, PIN, etc.)\n3. Sending the signed assertion response here\n\nSuccess: You'll receive access and refresh tokens to use the API.",
+        "operationId": "AuthController_completePasskeyChallenge",
+        "parameters": [
+          {
+            "name": "challengeId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompletePasskeyChallengeDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Login successful. Use tokens for API requests.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthTokensResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Passkey authentication is not available for this challenge (challenge requires TOTP instead)"
+          },
+          "401": {
+            "description": "Invalid/unknown passkey, assertion verification failed, or challenge expired/not found"
+          }
+        },
+        "summary": "Complete login with passkey",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/refresh": {
+      "post": {
+        "description": "Obtain a fresh access token using your refresh token.\n\nAccess tokens expire regularly for security. When yours expires, use this endpoint to get a new one without logging in again.",
+        "operationId": "AuthController_refresh",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefreshTokenDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Token refresh successful. Returns new access token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccessTokenResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or expired refresh token"
+          }
+        },
+        "summary": "Get a new access token",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/users/me": {
+      "get": {
+        "operationId": "UsersController_getCurrentUser",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurrentUserResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Get the current user",
+        "tags": [
+          "users"
+        ]
+      }
+    },
+    "/api/users": {
+      "get": {
+        "operationId": "UsersController_listUsers",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ManagedUserResponseDto"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List users in the current organization",
+        "tags": [
+          "users"
+        ]
+      },
+      "post": {
+        "operationId": "UsersController_createUser",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateManagedUserDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManagedUserResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Create a new user in the current organization",
+        "tags": [
+          "users"
+        ]
+      }
+    },
+    "/api/users/{userId}": {
+      "get": {
+        "operationId": "UsersController_getUser",
+        "parameters": [
+          {
+            "name": "userId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManagedUserResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "User not found"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Get a user by ID within the current organization",
+        "tags": [
+          "users"
+        ]
+      },
+      "patch": {
+        "operationId": "UsersController_updateUser",
+        "parameters": [
+          {
+            "name": "userId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateManagedUserDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManagedUserResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "User not found"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Update a user within the current organization",
+        "tags": [
+          "users"
+        ]
+      },
+      "delete": {
+        "operationId": "UsersController_deleteUser",
+        "parameters": [
+          {
+            "name": "userId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "User deleted"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Delete a user within the current organization",
+        "tags": [
+          "users"
+        ]
+      }
+    },
+    "/api/users/{userId}/features": {
+      "get": {
+        "operationId": "UsersController_getUserFeatures",
+        "parameters": [
+          {
+            "name": "userId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserFeaturesResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "User not found"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List the features assigned to a user",
+        "tags": [
+          "users"
+        ]
+      },
+      "patch": {
+        "operationId": "UsersController_updateUserFeatures",
+        "parameters": [
+          {
+            "name": "userId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateUserFeaturesDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserFeaturesResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "User or feature not found"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Replace the list of features assigned to a user",
+        "tags": [
+          "users"
+        ]
+      }
+    },
+    "/api/users/{userId}/api-keys": {
+      "get": {
+        "operationId": "UsersController_listUserApiKeys",
+        "parameters": [
+          {
+            "name": "userId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/UserApiKeyResponseDto"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List API keys for a user",
+        "tags": [
+          "users"
+        ]
+      },
+      "post": {
+        "operationId": "UsersController_createUserApiKey",
+        "parameters": [
+          {
+            "name": "userId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateUserApiKeyDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserApiKeyResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Create a new API key for a user",
+        "tags": [
+          "users"
+        ]
+      }
+    },
+    "/api/users/{userId}/api-keys/{apiKeyId}": {
+      "delete": {
+        "operationId": "UsersController_deleteUserApiKey",
+        "parameters": [
+          {
+            "name": "userId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "apiKeyId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "API key deleted"
+          },
+          "404": {
+            "description": "API key not found"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Delete an API key for a user",
+        "tags": [
+          "users"
+        ]
+      }
+    },
+    "/api/users/me/profile-id": {
+      "post": {
+        "operationId": "UsersController_setProfileId",
+        "parameters": [
+          {
+            "name": "x-client-instance-id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetProfileDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Profile id persisted"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Create profile id for the current user and instance",
+        "tags": [
+          "users"
+        ]
+      },
+      "delete": {
+        "operationId": "UsersController_deleteProfileId",
+        "parameters": [
+          {
+            "name": "profile_id",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "x-client-instance-id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Profile id removed"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Delete profile id for the current user and instance",
+        "tags": [
+          "users"
+        ]
+      }
+    },
+    "/api/users/{userId}/instance-visibility": {
+      "get": {
+        "operationId": "UsersController_getUserInstanceVisibility",
+        "parameters": [
+          {
+            "name": "userId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserInstanceVisibilityResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "User not found"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Get instance visibility for a user",
+        "tags": [
+          "users"
+        ]
+      },
+      "put": {
+        "operationId": "UsersController_updateUserInstanceVisibility",
+        "parameters": [
+          {
+            "name": "userId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateUserInstanceVisibilityDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserInstanceVisibilityResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid visibility update"
+          },
+          "404": {
+            "description": "User or instance not found"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Replace instance visibility for a user",
+        "tags": [
+          "users"
+        ]
+      }
+    },
+    "/api/users/{userId}/assignable-instances": {
+      "get": {
+        "operationId": "UsersController_listAssignableInstances",
+        "parameters": [
+          {
+            "name": "userId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AssignableOrganizationInstanceDto"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "User not found"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List assignable organization instances",
+        "tags": [
+          "users"
+        ]
+      }
+    },
+    "/api/organizations": {
+      "get": {
+        "operationId": "OrganizationsController_listOrganizations",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/UserOrganizationResponseDto"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List organizations available to the current user",
+        "tags": [
+          "organizations"
+        ]
+      }
+    },
+    "/api/organizations/switch": {
+      "post": {
+        "description": "After switching organizations, please use the new returned access token for subsequent requests",
+        "operationId": "OrganizationsController_switchOrganization",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SwitchOrganizationDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthTokensResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Switch the active organization for the current user",
+        "tags": [
+          "organizations"
+        ]
+      }
+    },
+    "/api/organizations/current": {
+      "get": {
+        "operationId": "OrganizationsController_getCurrentOrganization",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurrentOrganizationResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Get the current organization",
+        "tags": [
+          "organizations"
+        ]
+      },
+      "patch": {
+        "description": "Only `ip_whitelist` is writable at the moment.",
+        "operationId": "OrganizationsController_updateCurrentOrganization",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateCurrentOrganizationDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurrentOrganizationResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Update the current organization",
+        "tags": [
+          "organizations"
+        ]
+      }
+    },
+    "/api/client-instances": {
+      "post": {
+        "operationId": "ClientInstancesController_createClientInstance",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateClientInstanceDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Instance created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClientInstanceDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Instance already exists"
+          }
+        },
+        "summary": "Create a new instance",
+        "tags": [
+          "client-instances"
+        ]
+      },
+      "get": {
+        "operationId": "ClientInstancesController_listClientInstances",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "description": "The page number (starting from 1)",
+            "schema": {
+              "example": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "page_size",
+            "required": false,
+            "in": "query",
+            "description": "The number of items per page. Defaults to 100.",
+            "schema": {
+              "example": 100,
+              "type": "number"
+            }
+          },
+          {
+            "name": "order_by",
+            "required": false,
+            "in": "query",
+            "description": "Possible fields to order by",
+            "schema": {
+              "enum": [
+                "id",
+                "consultant_number",
+                "owner_name",
+                "registered_at",
+                "name",
+                "status",
+                "last_reply",
+                "version",
+                "it_partner_id",
+                "connection_type",
+                "is_test"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "fields",
+            "required": false,
+            "in": "query",
+            "description": "Possible fields to select",
+            "schema": {
+              "enum": [
+                "id",
+                "consultant_number",
+                "owner_name",
+                "registered_at",
+                "name",
+                "status",
+                "last_reply",
+                "version",
+                "it_partner_id",
+                "connection_type",
+                "is_test"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "filter",
+            "required": false,
+            "in": "query",
+            "description": "Filter results",
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "id",
+                  "consultant_number",
+                  "owner_name",
+                  "registered_at",
+                  "name",
+                  "status",
+                  "last_reply",
+                  "version",
+                  "it_partner_id",
+                  "connection_type",
+                  "is_test"
+                ]
+              }
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ClientInstanceDto"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "List instances",
+        "tags": [
+          "client-instances"
+        ]
+      }
+    },
+    "/api/client-instances/{instance_id}/windows-user": {
+      "post": {
+        "operationId": "ClientInstancesController_setWindowsUser",
+        "parameters": [
+          {
+            "name": "instance_id",
+            "required": true,
+            "in": "path",
+            "description": "Instance ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetWindowsUserDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetWindowsUserResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Configure Windows user for a client instance",
+        "tags": [
+          "client-instances"
+        ]
+      }
+    },
+    "/api/client-instances/{instance_id}/windows-user/credential-url": {
+      "get": {
+        "operationId": "ClientInstancesController_getCredentialUrl",
+        "parameters": [
+          {
+            "name": "instance_id",
+            "required": true,
+            "in": "path",
+            "description": "Instance ID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "organization_id",
+            "required": false,
+            "in": "query",
+            "description": "Optional organization override. If omitted, the current user organization is used.",
+            "schema": {
+              "example": "29b9e528-6a20-4df0-8af8-2b0893f5bf25",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CredentialUrlResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Instance not found"
+          }
+        },
+        "summary": "Get a short-lived credential URL for setting Windows credentials",
+        "tags": [
+          "client-instances"
+        ]
+      }
+    },
+    "/api/client-instances/{instance_id}": {
+      "patch": {
+        "operationId": "ClientInstancesController_updateClientInstance",
+        "parameters": [
+          {
+            "name": "instance_id",
+            "required": true,
+            "in": "path",
+            "description": "Instance ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateClientInstanceDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClientInstanceDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The consultant_number can only be updated for unregistered instances"
+          },
+          "404": {
+            "description": "Instance not found"
+          }
+        },
+        "summary": "Update a client instance",
+        "tags": [
+          "client-instances"
+        ]
+      },
+      "get": {
+        "operationId": "ClientInstancesController_getClientInstance",
+        "parameters": [
+          {
+            "name": "instance_id",
+            "required": true,
+            "in": "path",
+            "description": "Instance ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClientInstanceDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Instance not found"
+          }
+        },
+        "summary": "Get instance details",
+        "tags": [
+          "client-instances"
+        ]
+      },
+      "delete": {
+        "operationId": "ClientInstancesController_deleteClientInstance",
+        "parameters": [
+          {
+            "name": "instance_id",
+            "required": true,
+            "in": "path",
+            "description": "Instance ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          },
+          "404": {
+            "description": "Instance not found"
+          }
+        },
+        "summary": "Delete a client instance",
+        "tags": [
+          "client-instances"
+        ]
+      }
+    },
+    "/api/client-instances/{instance_id}/profiles": {
+      "get": {
+        "operationId": "ClientInstancesController_listClientInstanceProfiles",
+        "parameters": [
+          {
+            "name": "instance_id",
+            "required": true,
+            "in": "path",
+            "description": "Instance ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ClientInstanceProfileDto"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Instance not found"
+          }
+        },
+        "summary": "List profiles for an instance",
+        "tags": [
+          "client-instances"
+        ]
+      }
+    },
+    "/api/client-instances/{instance_id}/restart-datevconnect": {
+      "post": {
+        "operationId": "ClientInstancesController_restartDatevconnect",
+        "parameters": [
+          {
+            "name": "instance_id",
+            "required": true,
+            "in": "path",
+            "description": "Instance ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionSuccessResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Instance not found"
+          },
+          "422": {
+            "description": "Could not restart DATEVconnect service"
+          }
+        },
+        "summary": "Restart the DATEVconnect service",
+        "tags": [
+          "client-instances"
+        ]
+      }
+    },
+    "/api/client-instances/{instance_id}/restart-connector-service": {
+      "post": {
+        "operationId": "ClientInstancesController_restartConnectorService",
+        "parameters": [
+          {
+            "name": "instance_id",
+            "required": true,
+            "in": "path",
+            "description": "Instance ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionSuccessResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Instance not found"
+          },
+          "422": {
+            "description": "Could not restart Klardaten connector service"
+          }
+        },
+        "summary": "Restart the Klardaten connector service",
+        "tags": [
+          "client-instances"
+        ]
+      }
+    },
+    "/api/client-instances/{instance_id}/launch-datev": {
+      "post": {
+        "operationId": "ClientInstancesController_launchDatev",
+        "parameters": [
+          {
+            "name": "instance_id",
+            "required": true,
+            "in": "path",
+            "description": "Instance ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClientInstanceDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Instance not found"
+          },
+          "422": {
+            "description": "Could not launch DATEV Arbeitsplatz"
+          }
+        },
+        "summary": "Launch DATEV Arbeitsplatz",
+        "tags": [
+          "client-instances"
+        ]
+      }
+    },
+    "/api/data-changes/webhooks": {
+      "get": {
+        "operationId": "DataChangesController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "List of data-changes webhooks",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DataChangesWebhookDto"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "Get list of data-changes webhooks",
+        "tags": [
+          "data-changes"
+        ]
+      },
+      "post": {
+        "description": "You can specify the instance id using either the `x-client-instance-id` header, or the `instance_id` property in the body of the request. The header takes precedence.",
+        "operationId": "DataChangesController_create",
+        "parameters": [
+          {
+            "name": "x-client-instance-id",
+            "in": "header",
+            "description": "The instance ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateDataChangesWebhookDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Webhook created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataChangesWebhookDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Create a data-changes webhook",
+        "tags": [
+          "data-changes"
+        ]
+      }
+    },
+    "/api/data-changes/webhooks/{id}": {
+      "delete": {
+        "operationId": "DataChangesController_delete",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Webhook deleted successfully"
+          },
+          "404": {
+            "description": "Webhook not found"
+          }
+        },
+        "summary": "Delete a data-changes webhook",
+        "tags": [
+          "data-changes"
+        ]
+      },
+      "get": {
+        "operationId": "DataChangesController_get",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Webhook details retrieved successfully"
+          },
+          "404": {
+            "description": "Webhook not found"
+          }
+        },
+        "summary": "Get details of a data-changes webhook",
+        "tags": [
+          "data-changes"
+        ]
+      }
+    },
+    "/api/it-partners": {
+      "get": {
+        "operationId": "ItPartnersController_listItPartners",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "List of IT Partners",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ItPartnerDto"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List IT Partners",
+        "tags": [
+          "it-partners"
+        ]
+      }
+    },
+    "/api/monitoring/webhooks": {
+      "post": {
+        "description": "\nThis endpoint allows users to create a webhook for monitoring instance status changes.\nThe webhook will trigger notifications when an instance goes up or down.\n\nWebhooks use the same retry logic as data change notifications, with exponential backoff up to 10 retries in case of delivery failures.",
+        "operationId": "MonitoringController_createMonitoringWebhook",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "description": "Webhook configuration",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateMonitoringWebhookDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The webhook has been successfully created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MonitoringWebhookDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "summary": "Create a monitoring webhook",
+        "tags": [
+          "monitoring"
+        ]
+      },
+      "get": {
+        "operationId": "MonitoringController_listMonitoringWebhooks",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "List of monitoring webhooks",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MonitoringWebhookDto"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "List all monitoring webhooks",
+        "tags": [
+          "monitoring"
+        ]
+      }
+    },
+    "/api/monitoring/webhooks/{id}": {
+      "get": {
+        "operationId": "MonitoringController_getMonitoringWebhook",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "Webhook ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Webhook details retrieved successfully"
+          },
+          "404": {
+            "description": "Webhook not found"
+          }
+        },
+        "summary": "Get details of a monitoring webhook",
+        "tags": [
+          "monitoring"
+        ]
+      },
+      "delete": {
+        "operationId": "MonitoringController_deleteMonitoringWebhook",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "Webhook ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Webhook deleted successfully"
+          },
+          "404": {
+            "description": "Webhook not found"
+          }
+        },
+        "summary": "Delete a monitoring webhook",
+        "tags": [
+          "monitoring"
+        ]
+      }
+    },
+    "/api/monitoring/instance/{instance_id}/audit-logs": {
+      "get": {
+        "operationId": "MonitoringController_listAuditLogFiles",
+        "parameters": [
+          {
+            "name": "instance_id",
+            "required": true,
+            "in": "path",
+            "description": "The instance ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of audit log files retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AuditLogsResponseDto"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "List audit log files for an instance",
+        "tags": [
+          "monitoring"
+        ]
+      }
+    },
+    "/api/monitoring/instance/{instance_id}/audit-logs/{log_name}/download": {
+      "get": {
+        "operationId": "MonitoringController_downloadAuditLog",
+        "parameters": [
+          {
+            "name": "instance_id",
+            "required": true,
+            "in": "path",
+            "description": "The instance ID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "log_name",
+            "required": true,
+            "in": "path",
+            "description": "Audit log name",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Audit log downloaded successfully",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary",
+                  "example": "Sample log file content"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Audit log not found"
+          }
+        },
+        "summary": "Download audit log for an instance",
+        "tags": [
+          "monitoring"
+        ]
+      }
+    },
+    "/api/monitoring/instance/{instance_id}/logs": {
+      "get": {
+        "operationId": "MonitoringController_queryInstanceLogs",
+        "parameters": [
+          {
+            "name": "instance_id",
+            "required": true,
+            "in": "path",
+            "description": "The instance ID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from_date",
+            "required": false,
+            "in": "query",
+            "description": "The start date for the logs",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to_date",
+            "required": false,
+            "in": "query",
+            "description": "The end date for the logs",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "filter_pattern",
+            "required": false,
+            "in": "query",
+            "description": "The filter pattern for the logs",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "next_token",
+            "required": false,
+            "in": "query",
+            "description": "The next page token",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "oldest_first",
+            "required": false,
+            "in": "query",
+            "description": "Indicates whether the oldest logs should be returned first",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Instance logs retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedLogsResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Query logs for an instance",
+        "tags": [
+          "monitoring"
+        ]
+      }
+    },
+    "/api/monitoring/instance/{instance_id}/metrics": {
+      "get": {
+        "operationId": "MonitoringController_queryInstanceMetrics",
+        "parameters": [
+          {
+            "name": "instance_id",
+            "required": true,
+            "in": "path",
+            "description": "The instance ID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from_date",
+            "required": false,
+            "in": "query",
+            "description": "The start date for the health check",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to_date",
+            "required": false,
+            "in": "query",
+            "description": "The end date for the health check",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Instance metrics retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/InstanceMetricsResponseDto"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "Query metrics for an instance",
+        "tags": [
+          "monitoring"
+        ]
+      }
+    },
+    "/api/monitoring/instance/{instance_id}/datev-connect-health": {
+      "get": {
+        "operationId": "MonitoringController_datevConnectHealth",
+        "parameters": [
+          {
+            "name": "instance_id",
+            "required": true,
+            "in": "path",
+            "description": "The instance ID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from_date",
+            "required": false,
+            "in": "query",
+            "description": "The start date for the health check",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to_date",
+            "required": false,
+            "in": "query",
+            "description": "The end date for the health check",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Datev Connect health stats retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DatevConnectHealthStatsResponseDto"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "Get Datev Connect health stats for an instance",
+        "tags": [
+          "monitoring"
+        ]
+      }
+    },
+    "/api/monitoring/instance/{instance_id}/usage-stats": {
+      "get": {
+        "description": "Retrieves HTTP request usage statistics aggregated into configurable minute bins with request counts and average response times.",
+        "operationId": "MonitoringController_getInstanceUsageStats",
+        "parameters": [
+          {
+            "name": "instance_id",
+            "required": true,
+            "in": "path",
+            "description": "The instance ID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from_date",
+            "required": false,
+            "in": "query",
+            "description": "The start date for the statistics",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to_date",
+            "required": false,
+            "in": "query",
+            "description": "The end date for the statistics",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "granularity_minutes",
+            "required": false,
+            "in": "query",
+            "description": "Granularity in minutes for usage statistic bins (minimum: 1)",
+            "schema": {
+              "minimum": 1,
+              "maximum": 10080,
+              "default": 10,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Usage statistics retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/UsageStatsResponseDto"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "Get usage statistics for an instance",
+        "tags": [
+          "monitoring"
+        ]
+      }
+    }
+  },
+  "info": {
+    "title": "Klardaten DATEVconnect Gateway",
+    "description": "The Klardaten DATEVconnect Gateway provides access to DATEV on-premise systems via DATEVconnect.\n\n**Looking for advanced features?** Check out our [Enterprise API](/docs/enterprise) for pagination, filtering, and enhanced webhook capabilities.\n\n### Key Features\n\n- **Simple Authentication**: Basic user registration, login, and token management\n- **DATEVconnect Proxy**: Direct access to DATEV services through our gateway\n- **Basic Webhooks**: Get notified of data changes\n- **Client Instance Management**: Connect and manage multiple DATEV systems\n\n### Getting Started\n\nMost endpoints require authentication. Here's the basic flow:\n\n1. **Register** or **Login** to get an access token\n2. Include the token in all requests: `Authorization: Bearer <your-token>`\n3. **Refresh** your token when it expires\n\n#### Quick Example\n```http\nPOST https://api.klardaten.com/api/auth/login\nContent-Type: application/json\n\n{\n  \"email\": \"your-email@example.com\",\n  \"password\": \"your-password\"\n}\n```\n\nResponse:\n```json\n{\n  \"access_token\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...\",\n  \"refresh_token\": \"dGhpcyBpcyBhIHJlZnJlc2ggdG9rZW4...\"\n}\n```\n\nUse the `access_token` in subsequent requests:\n```http\nGET https://api.klardaten.com/api/client-instances\nAuthorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...\n```\n\n### Fixed API keys\nFor machine-to-machine usage, you can also create and use API keys and send them as `Authorization: Bearer uk-...` instead of a user access token. Create them via our dashboard or by calling `POST https://api.klardaten.com/api/users/:userid/api-keys`.\n\n### Connecting to DATEV Systems\n\nTo access a DATEV system through our API, you need to create a client instance with the consultant number (Beraternummer):\n\n#### 1. Create a Client Instance\n```http\nPOST https://api.klardaten.com/api/client-instances\nAuthorization: Bearer <your-token>\nContent-Type: application/json\n\n{\n  \"name\": \"My DATEV instance\",\n  \"consultant_number\": \"7654321\"\n}\n```\n\nResponse:\n```json\n{\n  \"id\": \"48fa2446-c731-4a74-9ea7-b4bd6d66fe5f\",\n  \"name\": \"My DATEV instance\", \n  \"consultant_number\": \"7654321\"\n}\n```\n\n#### 2. Use the Instance ID in Requests\nInclude the instance ID in the `x-client-instance-id` header for all DATEV-related requests:\n\n```http\nGET https://api.klardaten.com/datevconnect/master-data/v1/clients\nAuthorization: Bearer <your-token>\nx-client-instance-id: 48fa2446-c731-4a74-9ea7-b4bd6d66fe5f\n```\n\n#### 3. Manage Your Instances\n- **List all instances**: `GET /api/client-instances`\n- **Get instance details**: `GET /api/client-instances/{instance-id}`\n\n> **Note**: Instance creation can be done before or after installing the Klardaten Connector on your DATEV system.\n\n### Data Changes Webhooks\n\nGet notified when DATEV data changes. Create webhooks using `POST /api/data-changes/webhooks`.\n\n#### Example Payload\n```json\n{\n  \"id\": \"55571da2-1223-4b12-bdd4-88e8e38b77aa\",\n  \"instance_id\": \"2036d556-9b1f-498f-b2e2-0b6d91fa8d73\",\n  \"timestamp\": 1720615358,\n  \"current\": [\n    {\n      \"client_id\": \"626029d4-dc00-4f14-9036-2170a5694448\",\n      \"client_number\": 10000,\n      \"client_status\": \"1\", \n      \"client_name\": \"Franz Camembert\",\n      ...\n    }\n  ],\n  \"type\": \"update\"\n}\n```\n\n#### Supported Entities\n- `client`\n- `document`\n\n\n### Webhook Delivery and Retry Logic\n\nWhen a webhook event occurs, our system sends a webhook to the specified endpoint. If the webhook delivery fails, our system implements a retry mechanism to ensure successful delivery.\n\n#### Key Features of Webhook Retry Logic:\n\n- **Automatic Retries**: If the webhook delivery fails (due to a non-2xx response or a timeout), the system will automatically retry.\n- **Exponential Backoff**: The retry intervals increase exponentially after each failed attempt, starting with a 1-second delay for the first retry, doubling with each subsequent retry (e.g., 1s, 2s, 4s, etc.).\n- **Max Retry Attempts**: By default, the system will retry up to 10 times. If all retries fail, the webhook delivery will be marked as failed, and the issue will be logged.\n- **Timeout Management**: Each webhook attempt is given a maximum of 5 seconds to complete. If no response is received within that time, the attempt will be considered failed.\n- **Failure Logging**: Each failed attempt is logged, and after all retries are exhausted, a final failure report will be created.\n\n### Verifying Webhooks Authenticity\n\nWe provide an additional security measure to verify the webhooks you receive are genuine. This can be useful if you're looking to ensure only Klardaten webhooks are being made to your endpoint and ensure the information is genuine and as the system expects. These signatures will also help prevent against replay attacks. Verifying the signing secret is optional.\n\nWebhook requests will contain a header which can be used to verify the request's authenticity: `x-klardaten-webhook-signature`. This is used in conjunction with the payload of the request.\n\n#### Getting a Webhook's Secret\n\nWhen creating a new webhook, a `secret` property will be returned along with the webhook's details.\n\nYou should store this secret at your end if you are interested in verifying our webhooks signatures.\n\n#### Verifying the Signature\n\nTo verify the webhook signature sent as the `x-klardaten-webhook-signature` header, you should sign the request's body with the webhook secret key using SHA256, then generate a hexadecimal digest, which can be represented as `hexdigest(HMACSHA256(BODY))`.\n\n#### Verification Example (Node.js)\n\n```javascript\nconst crypto = require(\"crypto\");\n\nfunction verifyWebhookSignature(body, signature, secret) {\n  const hmac = crypto.createHmac('sha256', secret);\n  const computedSignature = hmac\n    .update(Buffer.from(JSON.stringify(body), 'utf8'))\n    .digest('hex');\n  \n  return computedSignature === signature;\n}\n\n// Usage in your webhook handler\nconst isValid = verifyWebhookSignature(\n  req.body, \n  req.headers[\"x-klardaten-webhook-signature\"], \n  \"your-webhook-secret\"\n);\n```\n\n### Request Correlation ID\n\nTo help with tracking and debugging, our API supports a correlation id mechanism. This allows both the client and server to uniquely identify and trace each request.\n\nHow It Works:\n\n- **Client-Supplied Correlation ID**: You can include an optional X-Correlation-Id header in your requests. This ID will be included in the response headers as well, making it easy to track the request across different services or when reporting issues.\n- **Auto-Generated Correlation ID**: If you don't provide a X-Correlation-Id in your request, our API will generate a unique correlation id for you and include it in the response headers.\n- **Error Reporting**: The Correlation ID is also logged with any errors, making it easy to reference and investigate specific issues. Clients can use this ID when reporting problems, allowing for more efficient troubleshooting.\n\n#### Example\n\nHere's how you can include a X-Correlation-Id in your requests:\n\n```http\nGET https://api.klardaten.com/api/client-instances\nAuthorization: Bearer ey...\nX-Correlation-Id: 123e4567-e89b-12d3-a456-426614174000\n```\n\nIn this example, the server will return the same X-Correlation-Id in the response:\n\n```http\nHTTP/1.1 200 OK\nX-Correlation-Id: 123e4567-e89b-12d3-a456-426614174000\n```\n\n\n### Profiles\n\nA **profile** is a named credential set that authenticates a request against a DATEV instance. Each profile stores a Windows username, an optional domain, and a password under a developer-chosen identifier (`profile_id`). When a DATEVconnect request is made, the profile's credentials are used to authenticate with the DATEV installation on-site.\n\n> **Credentials are never stored at Klardaten.** When you register a profile, the credentials are transmitted directly to the DATEV instance connector and stored there. Klardaten's backend only retains the `profile_id` string to identify which profile to use — not the username, domain, or password.\n\nThere are two built-in profile IDs with conventional meaning:\n\n| `profile_id` | Intended use |\n|---|---|\n| `service-account` | Shared service credentials used for DATEVconnect API access |\n| `system-account` | Internal credentials used by the connector itself; not available for DATEVconnect API calls |\n\nYou are free to use any string as a `profile_id` (up to 256 characters); these two are provisioned automatically for every new organization–instance link.\n\nProfiles exist at two scopes:\n\n- **Organization profiles** — shared across all users within an organization. These are provisioned automatically when an organization is linked to an instance.\n- **User profiles** — private to a single user. Any user can register additional profiles for themselves via the API.\n\n---\n\n### Listing Profiles for an Instance\n\nTo see which profiles are available to you for a given instance, including which one is currently set as the default:\n\n```http\nGET /api/client-instances/{instance_id}/profiles\nAuthorization: Bearer ey...\n```\n\nResponse:\n\n```json\n[\n  {\n    \"id\": \"7a3c8de7-6d2d-4cf6-9a12-3d0877a6b1f4\",\n    \"profile_id\": \"service-account\",\n    \"scope\": \"organization\",\n    \"name\": \"Acme GmbH\",\n    \"is_default\": true\n  },\n  {\n    \"id\": \"2b1f9ac3-4e7d-41a2-bb23-9c1234567890\",\n    \"profile_id\": \"john-personal\",\n    \"scope\": \"user\",\n    \"name\": \"john@example.com\",\n    \"is_default\": false\n  }\n]\n```\n\nThe `scope` field indicates whether the profile belongs to the organization (`\"organization\"`) or to the authenticated user (`\"user\"`). The `is_default` field shows which profile will be used automatically if no `x-profile-id` header is provided.\n\n---\n\n### Creating a User Profile via API\n\nRegister a new profile (or update an existing one with the same `profile_id`) for the current user on a specific instance:\n\n```http\nPOST /api/users/me/profile-id\nAuthorization: Bearer ey...\nx-client-instance-id: {instance_id}\nContent-Type: application/json\n\n{\n  \"profile_id\": \"john-personal\",\n  \"username\": \"john.doe\",\n  \"domain\": \"DOMAIN\",\n  \"password\": \"s3cr3t\"\n}\n```\n\n| Field | Required | Description |\n|---|---|---|\n| `profile_id` | Yes | Identifier for this profile (max 256 characters) |\n| `username` | Yes | Windows username to authenticate with |\n| `domain` | No | Windows domain |\n| `password` | Yes | Password for the account |\n\nA successful request returns `204 No Content`. If the credentials cannot be validated against the DATEV instance, a `422 Unprocessable Entity` is returned.\n\n---\n\n### Deleting a User Profile\n\nRemove a previously registered profile:\n\n```http\nDELETE /api/users/me/profile-id?profile_id=john-personal\nAuthorization: Bearer ey...\nx-client-instance-id: {instance_id}\n```\n\nReturns `204 No Content` on success.\n\n---\n\n### Default Profile per Organization\n\nWhen an organization is first linked to a DATEV instance, two organization profiles are provisioned automatically: `service-account` (for DATEVconnect API access) and `system-account` (used internally by the connector). The `service-account` profile is set as the **organization default**.\n\nThe organization default is the fallback used for any member of the organization who has no user-level default configured. It is managed internally and does not require any setup.\n\n---\n\n### Default Profile per User\n\nWhen a user is first added to an instance, the `service-account` profile is set as their **user default**. This profile takes precedence over the organization default when a request is made without an explicit `x-profile-id` header.\n\nIf you have registered additional profiles for yourself and want to switch which one is used by default, contact your organization administrator to update the default profile for your account.\n\n---\n\n### Using a Profile in Requests\n\nOn any DATEVconnect API request, you can specify which profile to use via the `x-profile-id` header:\n\n```http\nGET /api/datevconnect/clients\nAuthorization: Bearer ey...\nx-client-instance-id: {instance_id}\nx-profile-id: john-personal\n```\n\nIf `x-profile-id` is omitted, the system resolves the profile automatically using the following priority order:\n\n1. **User default** — the default profile registered for the current user on this instance\n2. **Organization default** — the default profile for the user's organization on this instance\n3. If neither is available, the request is rejected with `403 Forbidden`\n\nAccess is also enforced: you can only reference profile IDs that belong to your organization or your own user account. Attempting to use a profile you have no access to returns `403 Forbidden`.\n",
+    "version": "1.0",
+    "contact": {
+      "name": "Support",
+      "email": "info@klardaten.com"
+    }
+  },
+  "tags": [
+    {
+      "name": "auth",
+      "description": ""
+    },
+    {
+      "name": "organizations",
+      "description": ""
+    },
+    {
+      "name": "users",
+      "description": ""
+    },
+    {
+      "name": "client-instances",
+      "description": ""
+    },
+    {
+      "name": "it-partners",
+      "description": ""
+    },
+    {
+      "name": "monitoring",
+      "description": ""
+    },
+    {
+      "name": "data-changes",
+      "description": ""
+    },
+    {
+      "name": "DATEVconnect",
+      "description": "\n  Our gateway acts as a reverse proxy for DATEVconnect (DATEV’s official Desktop API). It supports the DATEVconnect modules exposed by your DATEV environment and license.\n\n  DATEV’s documentation is the source of truth for endpoints, parameters, and request/response schemas:\n  https://developer.datev.de/en/products (tab Desktop APIs)\n\n  URL mapping:\n  - Local DATEVconnect:  http://localhost:58454/datev/api/<DATEVCONNECT_PATH>\n  - Via Klardaten:       https://api.klardaten.com/datevconnect/<DATEVCONNECT_PATH>\n\n  Example:\n  http://localhost:58454/datev/api/master-data/v1/clients\n  →\n  https://api.klardaten.com/datevconnect/master-data/v1/clients\n\n  The gateway forwards the HTTP method, path, query string, and body (and relevant headers) to DATEVconnect.\n"
+    }
+  ],
+  "servers": [
+    {
+      "url": "https://api.klardaten.com"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "bearer": {
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "type": "http"
+      }
+    },
+    "schemas": {
+      "CreateUserDto": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "example": "user@example.com",
+            "description": "The email of the user"
+          },
+          "name": {
+            "type": "string",
+            "example": "Acme Admin",
+            "description": "Optional display name of the user"
+          },
+          "description": {
+            "type": "string",
+            "example": "Primary account for Acme GmbH",
+            "description": "Optional description of the user"
+          },
+          "password": {
+            "type": "string",
+            "example": "P@ssw0rd!",
+            "description": "The password of the user",
+            "minLength": 8,
+            "pattern": "(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[^A-Za-z0-9])\\S{8,}"
+          }
+        },
+        "required": [
+          "email",
+          "password"
+        ]
+      },
+      "AuthTokensResponseDto": {
+        "type": "object",
+        "properties": {
+          "access_token": {
+            "type": "string",
+            "example": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+            "description": "The access token"
+          },
+          "access_token_expires_in": {
+            "type": "number",
+            "example": 3600,
+            "description": "Access token expiration time in seconds"
+          },
+          "refresh_token": {
+            "type": "string",
+            "example": "dGhpc0lzUmVmcmVzaFRva2Vu...",
+            "description": "The refresh token"
+          },
+          "refresh_token_expires_in": {
+            "type": "number",
+            "example": 604800,
+            "description": "Refresh token expiration time in seconds"
+          }
+        },
+        "required": [
+          "access_token",
+          "access_token_expires_in",
+          "refresh_token",
+          "refresh_token_expires_in"
+        ]
+      },
+      "ChangePasswordDto": {
+        "type": "object",
+        "properties": {
+          "current_password": {
+            "type": "string",
+            "example": "OldP@ssw0rd!",
+            "description": "Current password of the authenticated user"
+          },
+          "new_password": {
+            "type": "string",
+            "example": "N3wP@ssw0rd!",
+            "description": "New password for the authenticated user",
+            "minLength": 8,
+            "pattern": "(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[^A-Za-z0-9])\\S{8,}"
+          }
+        },
+        "required": [
+          "current_password",
+          "new_password"
+        ]
+      },
+      "TotpEnrollmentResponseDto": {
+        "type": "object",
+        "properties": {
+          "challenge_id": {
+            "type": "string",
+            "description": "Identifier required when confirming the TOTP enrollment."
+          },
+          "secret": {
+            "type": "string",
+            "description": "Base32 encoded shared secret."
+          },
+          "uri": {
+            "type": "string",
+            "description": "otpauth URI that can be encoded as QR code in clients."
+          }
+        },
+        "required": [
+          "challenge_id",
+          "secret",
+          "uri"
+        ]
+      },
+      "VerifyTotpEnrollmentDto": {
+        "type": "object",
+        "properties": {
+          "challenge_id": {
+            "type": "string",
+            "description": "Enrollment challenge identifier received when starting the TOTP flow."
+          },
+          "code": {
+            "type": "string",
+            "description": "Time-based one-time password code.",
+            "example": "123456"
+          }
+        },
+        "required": [
+          "challenge_id",
+          "code"
+        ]
+      },
+      "PasskeySummaryDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "friendlyName": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          },
+          "transports": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "PasskeyListResponseDto": {
+        "type": "object",
+        "properties": {
+          "passkeys": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PasskeySummaryDto"
+            }
+          }
+        },
+        "required": [
+          "passkeys"
+        ]
+      },
+      "PasskeyRegistrationOptionsRequestDto": {
+        "type": "object",
+        "properties": {
+          "friendlyName": {
+            "type": "string",
+            "description": "Optional label for the new passkey."
+          }
+        }
+      },
+      "PasskeyRegistrationOptionsResponseDto": {
+        "type": "object",
+        "properties": {
+          "publicKey": {
+            "type": "object",
+            "description": "PublicKeyCredentialCreationOptionsJSON payload to be used for navigator.credentials.create (wrap in { publicKey: ... }).",
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "publicKey"
+        ]
+      },
+      "VerifyPasskeyRegistrationDto": {
+        "type": "object",
+        "properties": {
+          "challenge": {
+            "type": "string",
+            "description": "Challenge returned inside the registration options."
+          },
+          "response": {
+            "type": "object",
+            "description": "Response object from navigator.credentials.create.",
+            "additionalProperties": false
+          },
+          "friendlyName": {
+            "type": "string",
+            "description": "Optional friendly name to attach to the passkey."
+          }
+        },
+        "required": [
+          "challenge",
+          "response"
+        ]
+      },
+      "VerifyTotpCodeDto": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "Time-based one-time password code.",
+            "example": "123456"
+          }
+        },
+        "required": [
+          "code"
+        ]
+      },
+      "CompletePasskeyChallengeDto": {
+        "type": "object",
+        "properties": {
+          "response": {
+            "type": "object",
+            "description": "Response object from navigator.credentials.get.",
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "response"
+        ]
+      },
+      "RefreshTokenDto": {
+        "type": "object",
+        "properties": {
+          "refresh_token": {
+            "type": "string",
+            "example": "dGhpc0lzUmVmcmVzaFRva2Vu...",
+            "description": "The refresh token"
+          }
+        },
+        "required": [
+          "refresh_token"
+        ]
+      },
+      "AccessTokenResponseDto": {
+        "type": "object",
+        "properties": {
+          "access_token": {
+            "type": "string",
+            "example": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+            "description": "The access token"
+          },
+          "access_token_expires_in": {
+            "type": "number",
+            "example": 3600,
+            "description": "Access token expiration time in seconds"
+          }
+        },
+        "required": [
+          "access_token",
+          "access_token_expires_in"
+        ]
+      },
+      "CurrentOrganizationResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Organization identifier"
+          },
+          "name": {
+            "type": "string",
+            "description": "Organization display name"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string",
+            "description": "Organization creation timestamp"
+          },
+          "domains": {
+            "description": "Assigned domains",
+            "example": [
+              "example.com"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "ip_whitelist": {
+            "description": "Allowed IP addresses or CIDR ranges for the current organization",
+            "example": [
+              "203.0.113.10",
+              "203.0.113.0/24"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "created_at",
+          "domains",
+          "ip_whitelist"
+        ]
+      },
+      "CurrentUserResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "e7a5e37f-6cc0-45a0-8810-3a8ef8806a67",
+            "description": "Identifier of the authenticated user"
+          },
+          "email": {
+            "type": "string",
+            "example": "user@example.com",
+            "description": "Email of the authenticated user"
+          },
+          "name": {
+            "type": "string",
+            "example": "Acme Admin",
+            "description": "Display name of the authenticated user",
+            "nullable": true
+          },
+          "description": {
+            "type": "string",
+            "example": "Primary account for Acme GmbH",
+            "description": "Optional description of the authenticated user",
+            "nullable": true
+          },
+          "features": {
+            "example": [
+              "feature-a",
+              "feature-b"
+            ],
+            "description": "Features assigned to the authenticated user",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "mfa_totp_enabled": {
+            "type": "boolean",
+            "example": false,
+            "description": "Whether the user has TOTP multi-factor authentication enabled"
+          },
+          "organization": {
+            "nullable": true,
+            "description": "Organization the user belongs to, if any",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CurrentOrganizationResponseDto"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "features",
+          "mfa_totp_enabled",
+          "organization"
+        ]
+      },
+      "ManagedUserResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "e7a5e37f-6cc0-45a0-8810-3a8ef8806a67",
+            "description": "User identifier"
+          },
+          "email": {
+            "type": "string",
+            "example": "user@example.com",
+            "description": "User email address"
+          },
+          "name": {
+            "type": "string",
+            "example": "Acme Admin",
+            "description": "Display name of the user",
+            "nullable": true
+          },
+          "description": {
+            "type": "string",
+            "example": "Primary account for Acme GmbH",
+            "description": "Optional description of the user",
+            "nullable": true
+          },
+          "ip_whitelist": {
+            "description": "Allowed IP addresses or CIDR ranges for the user. Empty list allows all IPs.",
+            "example": [
+              "203.0.113.10",
+              "203.0.113.0/24"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "mfa_totp_enabled": {
+            "type": "boolean",
+            "example": false,
+            "description": "Whether TOTP MFA is enabled for the user"
+          },
+          "is_enabled": {
+            "type": "boolean",
+            "example": true,
+            "description": "Whether the user account is enabled"
+          },
+          "passkeys_count": {
+            "type": "number",
+            "example": 2,
+            "description": "Number of registered passkeys for the user"
+          },
+          "organization_id": {
+            "type": "string",
+            "example": "a77ebf5a-9cb6-4f7a-a484-261c3490e5fc",
+            "description": "Organization identifier the user belongs to",
+            "nullable": true
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Creation timestamp"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Last update timestamp"
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "ip_whitelist",
+          "mfa_totp_enabled",
+          "is_enabled",
+          "passkeys_count",
+          "created_at",
+          "updated_at"
+        ]
+      },
+      "CreateManagedUserDto": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "example": "newuser@example.com",
+            "description": "Email of the user to create"
+          },
+          "name": {
+            "type": "string",
+            "example": "Acme Admin",
+            "description": "Display name for the user"
+          },
+          "description": {
+            "type": "string",
+            "example": "Primary account for Acme GmbH",
+            "description": "Optional description of the user"
+          },
+          "password": {
+            "type": "string",
+            "example": "P@ssw0rd!",
+            "description": "Initial password for the new user",
+            "minLength": 8,
+            "pattern": "(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[^A-Za-z0-9])\\S{8,}"
+          }
+        },
+        "required": [
+          "email",
+          "password"
+        ]
+      },
+      "UserFeaturesResponseDto": {
+        "type": "object",
+        "properties": {
+          "features": {
+            "example": [
+              "feature-a",
+              "feature-b"
+            ],
+            "description": "Feature flags that are enabled for the user",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "features"
+        ]
+      },
+      "UpdateManagedUserDto": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "example": "updateduser@example.com",
+            "description": "New email address for the user"
+          },
+          "name": {
+            "type": "string",
+            "example": "Acme Admin",
+            "description": "Updated display name for the user"
+          },
+          "description": {
+            "type": "string",
+            "example": "Primary account for Acme GmbH",
+            "description": "Updated description of the user"
+          },
+          "is_enabled": {
+            "type": "boolean",
+            "example": false,
+            "description": "Whether the user account should remain enabled"
+          },
+          "ip_whitelist": {
+            "description": "Replace the user IP whitelist. Empty or omitted allows all IPs.",
+            "example": [
+              "203.0.113.10",
+              "203.0.113.0/24"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "password": {
+            "type": "string",
+            "example": "N3wP@ssw0rd!",
+            "description": "New password for the user",
+            "minLength": 8,
+            "pattern": "(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[^A-Za-z0-9])\\S{8,}"
+          }
+        }
+      },
+      "UserApiKeyResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "7a3c8de7-6d2d-4cf6-9a12-3d0877a6b1f4",
+            "description": "API key identifier"
+          },
+          "api_key": {
+            "type": "string",
+            "example": "uk-...1a2b",
+            "description": "API key value (redacted in list responses; full value is shown only on creation)"
+          },
+          "name": {
+            "type": "string",
+            "example": "Production integration",
+            "description": "Optional display name of the API key",
+            "nullable": true
+          },
+          "last_used_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Timestamp of the latest successful API key authentication",
+            "nullable": true
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Creation timestamp"
+          }
+        },
+        "required": [
+          "id",
+          "api_key",
+          "name",
+          "last_used_at",
+          "created_at"
+        ]
+      },
+      "CreateUserApiKeyDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "example": "Production integration",
+            "description": "Optional display name for the API key",
+            "maxLength": 255
+          }
+        }
+      },
+      "SetProfileDto": {
+        "type": "object",
+        "properties": {
+          "profile_id": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          },
+          "domain": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string",
+            "format": "password"
+          }
+        },
+        "required": [
+          "profile_id",
+          "username",
+          "password"
+        ]
+      },
+      "UpdateUserFeaturesDto": {
+        "type": "object",
+        "properties": {
+          "features": {
+            "example": [
+              "feature-a",
+              "feature-b"
+            ],
+            "description": "Complete list of feature flags that should remain enabled for the user",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "features"
+        ]
+      },
+      "UserInstanceVisibilityResponseDto": {
+        "type": "object",
+        "properties": {
+          "restricted": {
+            "type": "boolean",
+            "description": "Whether this organization user is limited to explicitly assigned instances.",
+            "example": true
+          },
+          "instance_ids": {
+            "description": "Client instance IDs assigned to the user when restricted.",
+            "example": [
+              "123e4567-e89b-12d3-a456-426614174000"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "restricted",
+          "instance_ids"
+        ]
+      },
+      "AssignableOrganizationInstanceDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "123e4567-e89b-12d3-a456-426614174000",
+            "description": "Client instance identifier"
+          },
+          "name": {
+            "type": "string",
+            "example": "Acme GmbH",
+            "description": "Organization-specific display name for the instance",
+            "nullable": true
+          },
+          "consultant_number": {
+            "type": "string",
+            "example": "123456",
+            "description": "Consultant number for the instance"
+          },
+          "is_test": {
+            "type": "boolean",
+            "example": false,
+            "description": "Whether the organization marks the instance as a test instance"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "consultant_number",
+          "is_test"
+        ]
+      },
+      "UpdateUserInstanceVisibilityDto": {
+        "type": "object",
+        "properties": {
+          "restricted": {
+            "type": "boolean",
+            "description": "Set true to limit the user to instance_ids, or false to allow all organization instances.",
+            "example": true
+          },
+          "instance_ids": {
+            "description": "Client instance IDs assigned to the user. Required when restricted is true.",
+            "example": [
+              "123e4567-e89b-12d3-a456-426614174000"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "restricted"
+        ]
+      },
+      "Object": {
+        "type": "object",
+        "properties": {}
+      },
+      "UserOrganizationResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Organization identifier"
+          },
+          "name": {
+            "type": "string",
+            "description": "Organization display name"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string",
+            "description": "Organization creation timestamp"
+          },
+          "is_current": {
+            "type": "boolean",
+            "description": "Whether this organization is currently active"
+          },
+          "domains": {
+            "description": "Assigned domains",
+            "example": [
+              "example.com"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "created_at",
+          "is_current",
+          "domains"
+        ]
+      },
+      "SwitchOrganizationDto": {
+        "type": "object",
+        "properties": {
+          "organization_id": {
+            "type": "string",
+            "description": "Organization the user should switch to",
+            "example": "e7a5e37f-6cc0-45a0-8810-3a8ef8806a67"
+          }
+        },
+        "required": [
+          "organization_id"
+        ]
+      },
+      "UpdateCurrentOrganizationDto": {
+        "type": "object",
+        "properties": {
+          "ip_whitelist": {
+            "description": "Replace the organization IP whitelist. Empty or omitted allows all IPs.",
+            "example": [
+              "203.0.113.10",
+              "203.0.113.0/24"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "CreateClientInstanceDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "The name of the client instance",
+            "example": "Client Instance"
+          },
+          "consultant_number": {
+            "type": "string",
+            "description": "The consultant number (beraternummer) of the client instance",
+            "example": "123456"
+          },
+          "it_partner_id": {
+            "type": "string",
+            "description": "Optional IT Partner identifier. If omitted, the default IT Partner is used."
+          }
+        },
+        "required": [
+          "name",
+          "consultant_number"
+        ]
+      },
+      "ServiceStatus": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "description": "Service status",
+            "example": "UP"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "DatevConnectServiceStatuses": {
+        "type": "object",
+        "properties": {}
+      },
+      "ClientInstanceServiceStatuses": {
+        "type": "object",
+        "properties": {
+          "instance": {
+            "description": "Service status of the client instance",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ServiceStatus"
+              }
+            ]
+          },
+          "datevconnect": {
+            "description": "Service status of the datevConnect",
+            "example": {
+              "dms_v2": {
+                "status": "UP"
+              },
+              "accounting_v1": {
+                "status": "DOWN"
+              },
+              "hr_lug_v3": {
+                "status": "UNKNOWN"
+              }
+            },
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/DatevConnectServiceStatuses"
+              }
+            ]
+          },
+          "database_connection": {
+            "description": "Status of direct database connection",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ServiceStatus"
+              }
+            ]
+          }
+        },
+        "required": [
+          "instance",
+          "datevconnect",
+          "database_connection"
+        ]
+      },
+      "ClientInstanceDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Instance ID",
+            "example": "123e4567-e89b-12d3-a456-426614174000"
+          },
+          "name": {
+            "type": "string",
+            "description": "Instance Name",
+            "example": "Test Instance"
+          },
+          "consultant_number": {
+            "type": "string",
+            "description": "Consultant number (beraternummer)",
+            "example": "123456"
+          },
+          "owner_name": {
+            "type": "string",
+            "description": "Owner name reported by the client instance",
+            "example": "Acme GmbH"
+          },
+          "registered_at": {
+            "type": "string",
+            "description": "Instance registration date",
+            "example": "2021-01-01T00:00:00.000Z"
+          },
+          "it_partner_id": {
+            "type": "string",
+            "description": "Identifier of the assigned IT partner",
+            "example": "123e4567-e89b-12d3-a456-426614174000"
+          },
+          "connection_type": {
+            "type": "string",
+            "description": "Connection type for the client instance",
+            "enum": [
+              "nats",
+              "sse"
+            ],
+            "example": "nats"
+          },
+          "status": {
+            "description": "Service status including instance and other services like datevConnect",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ClientInstanceServiceStatuses"
+              }
+            ]
+          },
+          "last_reply": {
+            "type": "string",
+            "description": "Last reply from the client instance",
+            "example": "2021-01-01T00:00:00.000Z"
+          },
+          "version": {
+            "type": "string",
+            "description": "Connector version",
+            "example": "1.0.0"
+          },
+          "is_test": {
+            "type": "boolean",
+            "description": "Whether this is a test instance",
+            "example": false
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "consultant_number",
+          "registered_at",
+          "it_partner_id",
+          "connection_type",
+          "status",
+          "version",
+          "is_test"
+        ]
+      },
+      "SetWindowsUserDto": {
+        "type": "object",
+        "properties": {
+          "username": {
+            "type": "string",
+            "description": "Windows username",
+            "example": "klardaten.service"
+          },
+          "password": {
+            "type": "string",
+            "description": "Windows password",
+            "example": "SuperSecret!"
+          },
+          "token": {
+            "type": "string",
+            "description": "Token for this action",
+            "example": "abcdefg..."
+          },
+          "domain": {
+            "type": "string",
+            "description": "Windows domain",
+            "example": "CONTOSO"
+          }
+        },
+        "required": [
+          "username",
+          "password",
+          "token"
+        ]
+      },
+      "SetWindowsUserResponseDto": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "description": "Indicates whether the user was configured successfully",
+            "example": true
+          },
+          "message": {
+            "type": "string",
+            "description": "Optional message describing why the operation did not run",
+            "example": "Instance already configured"
+          }
+        },
+        "required": [
+          "success"
+        ]
+      },
+      "CredentialUrlResponseDto": {
+        "type": "object",
+        "properties": {
+          "credential_url": {
+            "type": "string",
+            "description": "Short-lived credential URL containing an opaque encrypted token.",
+            "example": "/secure-credentials/29b9e528-6a20-4df0-8af8-2b0893f5bf25/6735196b-998a-4500-8133-941e5230e1ee?token=6d7a2d8f..."
+          },
+          "expires_at": {
+            "type": "string",
+            "description": "UTC expiry timestamp for the token embedded in the URL.",
+            "example": "2026-03-10T12:15:00.000Z"
+          }
+        },
+        "required": [
+          "credential_url",
+          "expires_at"
+        ]
+      },
+      "UpdateClientInstanceDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "The name of the client instance",
+            "example": "Client Instance"
+          },
+          "consultant_number": {
+            "type": "string",
+            "description": "The consultant number (beraternummer) of the client instance",
+            "example": "123456"
+          },
+          "owner": {
+            "type": "string",
+            "description": "The owner of the client instance",
+            "example": "user-id"
+          },
+          "it_partner_id": {
+            "type": "string",
+            "description": "Optional IT Partner identifier to associate with the instance"
+          }
+        }
+      },
+      "ClientInstanceProfileDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "7a3c8de7-6d2d-4cf6-9a12-3d0877a6b1f4",
+            "description": "Profile record identifier"
+          },
+          "profile_id": {
+            "type": "string",
+            "example": "service-account",
+            "description": "Profile identifier used when selecting the profile"
+          },
+          "scope": {
+            "type": "string",
+            "example": "organization",
+            "enum": [
+              "organization",
+              "user"
+            ],
+            "description": "Profile ownership scope"
+          },
+          "name": {
+            "type": "string",
+            "example": "Finance Team",
+            "description": "Organization name or user email for the profile owner"
+          },
+          "is_default": {
+            "type": "boolean",
+            "example": true,
+            "description": "Whether this profile is configured as the default"
+          }
+        },
+        "required": [
+          "id",
+          "profile_id",
+          "scope",
+          "name",
+          "is_default"
+        ]
+      },
+      "ActionSuccessResponseDto": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "description": "Did the action complete successfully",
+            "example": true
+          }
+        },
+        "required": [
+          "success"
+        ]
+      },
+      "DataChangesWebhookDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The id of the webhook",
+            "example": "5c2b8705-ed8d-477d-a9ac-f7bb7bd304c6"
+          },
+          "endpoint": {
+            "type": "string",
+            "description": "The destination endpoint",
+            "example": "https://web.hook"
+          },
+          "created_at": {
+            "type": "string",
+            "description": "The creation date of the webhook",
+            "example": "2024-06-21T15:23:30.856Z"
+          },
+          "entity": {
+            "type": "string",
+            "description": "The entity tracked by the subscription",
+            "example": "document"
+          },
+          "instance_id": {
+            "type": "string",
+            "description": "The instance where changes will be tracked",
+            "example": "5c2b8705-ed8d-477d-a9ac-f7bb7bd304c6"
+          },
+          "secret": {
+            "type": "string",
+            "description": "The webhook secret",
+            "example": "5c2b8705ed8d477d"
+          }
+        },
+        "required": [
+          "id",
+          "endpoint",
+          "created_at",
+          "entity",
+          "instance_id"
+        ]
+      },
+      "CreateDataChangesWebhookDto": {
+        "type": "object",
+        "properties": {
+          "endpoint": {
+            "type": "string",
+            "description": "The destination endpoint",
+            "example": "https://web.hook"
+          },
+          "entity": {
+            "type": "string",
+            "description": "The entity tracked by the subscription",
+            "example": "document",
+            "enum": [
+              "document",
+              "document-structure-item"
+            ]
+          },
+          "instance_id": {
+            "type": "string",
+            "description": "The client instance ID",
+            "example": "instance-id"
+          }
+        },
+        "required": [
+          "endpoint",
+          "entity"
+        ]
+      },
+      "ItPartnerDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "IT Partner ID",
+            "example": "123e4567-e89b-12d3-a456-426614174000"
+          },
+          "name": {
+            "type": "string",
+            "description": "The name of the IT Partner",
+            "example": "Default"
+          },
+          "customer_setup_instruction": {
+            "type": "string",
+            "description": "Optional customer setup instruction for the IT Partner",
+            "example": "Install the connector using the provided script."
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ]
+      },
+      "CreateMonitoringWebhookDto": {
+        "type": "object",
+        "properties": {
+          "endpoint": {
+            "type": "string",
+            "description": "The destination endpoint",
+            "example": "https://webhook.endpoint"
+          },
+          "instance_id": {
+            "type": "string",
+            "description": "The client instance ID",
+            "example": "instance-id"
+          }
+        },
+        "required": [
+          "endpoint",
+          "instance_id"
+        ]
+      },
+      "MonitoringWebhookDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The webhook ID",
+            "example": "webhook-id"
+          },
+          "endpoint": {
+            "type": "string",
+            "description": "The destination endpoint",
+            "example": "https://webhook.endpoint"
+          },
+          "instance_id": {
+            "type": "string",
+            "description": "The client instance ID",
+            "example": "instance-id"
+          },
+          "created_at": {
+            "type": "string",
+            "description": "The creation date of the webhook",
+            "example": "2024-06-21T15:23:30.856Z"
+          },
+          "secret": {
+            "type": "string",
+            "description": "The webhook secret",
+            "example": "5c2b8705ed8d477d"
+          }
+        },
+        "required": [
+          "id",
+          "endpoint",
+          "instance_id",
+          "created_at"
+        ]
+      },
+      "AuditLogsResponseDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "The name of the file"
+          },
+          "size": {
+            "type": "number",
+            "description": "The size of the file in bytes"
+          },
+          "last_modified": {
+            "format": "date-time",
+            "type": "string",
+            "description": "The date the file was last modified"
+          }
+        },
+        "required": [
+          "name",
+          "size",
+          "last_modified"
+        ]
+      },
+      "LogsQueryResponseDto": {
+        "type": "object",
+        "properties": {
+          "timestamp": {
+            "type": "number",
+            "description": "The timestamp of the log entry"
+          },
+          "message": {
+            "type": "string",
+            "description": "The log message"
+          }
+        },
+        "required": [
+          "timestamp",
+          "message"
+        ]
+      },
+      "PaginatedLogsResponseDto": {
+        "type": "object",
+        "properties": {
+          "logs": {
+            "description": "The logs",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LogsQueryResponseDto"
+            }
+          },
+          "next_token": {
+            "type": "string",
+            "description": "The next page token"
+          }
+        },
+        "required": [
+          "logs"
+        ]
+      },
+      "DbCpuUsage": {
+        "type": "object",
+        "properties": {
+          "system_idle": {
+            "type": "number",
+            "description": "CPU usage of the database"
+          },
+          "sql_process_usage": {
+            "type": "number",
+            "description": "CPU usage of the database"
+          },
+          "other_process_usage": {
+            "type": "number",
+            "description": "CPU usage of the database"
+          }
+        },
+        "required": [
+          "system_idle",
+          "sql_process_usage",
+          "other_process_usage"
+        ]
+      },
+      "DbMemoryUsage": {
+        "type": "object",
+        "properties": {
+          "available_vas_mb": {
+            "type": "number",
+            "description": "Available VAS memory of the database"
+          },
+          "sql_server_memory_mb": {
+            "type": "number",
+            "description": "SQL Server memory usage"
+          },
+          "is_low_virtual_memory": {
+            "type": "boolean",
+            "description": "Low virtual memory"
+          },
+          "is_low_physical_memory": {
+            "type": "boolean",
+            "description": "Low physical memory"
+          }
+        },
+        "required": [
+          "available_vas_mb",
+          "sql_server_memory_mb",
+          "is_low_virtual_memory",
+          "is_low_physical_memory"
+        ]
+      },
+      "DbIoStats": {
+        "type": "object",
+        "properties": {
+          "total_reads": {
+            "type": "number",
+            "description": "Total reads"
+          },
+          "total_writes": {
+            "type": "number",
+            "description": "Total writes"
+          },
+          "total_io_stall_read_ms": {
+            "type": "number",
+            "description": "Total IO stall read ms"
+          },
+          "total_io_stall_write_ms": {
+            "type": "number",
+            "description": "Total IO stall write ms"
+          }
+        },
+        "required": [
+          "total_reads",
+          "total_writes",
+          "total_io_stall_read_ms",
+          "total_io_stall_write_ms"
+        ]
+      },
+      "InstanceMetricsResponseDto": {
+        "type": "object",
+        "properties": {
+          "timestamp": {
+            "format": "date-time",
+            "type": "string",
+            "description": "Timestamp of the metrics"
+          },
+          "cpu_usage_instance": {
+            "type": "number",
+            "description": "CPU usage of the instance"
+          },
+          "available_memory": {
+            "type": "number",
+            "description": "Available memory of the instance"
+          },
+          "total_memory": {
+            "type": "number",
+            "description": "Total memory of the instance"
+          },
+          "cpu_usage_process": {
+            "type": "number",
+            "description": "CPU usage of the database"
+          },
+          "memory_usage_process": {
+            "type": "number",
+            "description": "Memory usage of the instance"
+          },
+          "db_cpu_usage": {
+            "description": "Database CPU usage of the instance",
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/DbCpuUsage"
+              }
+            ]
+          },
+          "db_memory_usage": {
+            "description": "Database memory usage of the instance",
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/DbMemoryUsage"
+              }
+            ]
+          },
+          "db_io_stats": {
+            "description": "Database IO usage of the instance",
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/DbIoStats"
+              }
+            ]
+          },
+          "request_waiting_messages_count": {
+            "type": "number",
+            "description": "Number of waiting messages"
+          },
+          "request_processing_messages_count": {
+            "type": "number",
+            "description": "Number of processing messages"
+          }
+        },
+        "required": [
+          "timestamp",
+          "cpu_usage_instance",
+          "available_memory",
+          "total_memory",
+          "cpu_usage_process",
+          "memory_usage_process",
+          "db_cpu_usage",
+          "db_memory_usage",
+          "db_io_stats"
+        ]
+      },
+      "HealthStatus": {
+        "type": "string",
+        "enum": [
+          "Healthy",
+          "Unhealthy",
+          "Unknown",
+          "Error",
+          "Timeout",
+          "Not Configured"
+        ],
+        "description": "The status of the service"
+      },
+      "ServiceDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "The name of the service"
+          },
+          "health_status": {
+            "description": "The status of the service",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/HealthStatus"
+              }
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "health_status"
+        ]
+      },
+      "DatevConnectHealthStatsResponseDto": {
+        "type": "object",
+        "properties": {
+          "timestamp": {
+            "type": "string",
+            "description": "The timestamp of the stat entry"
+          },
+          "services": {
+            "description": "DATEVconnect services",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ServiceDto"
+            }
+          }
+        },
+        "required": [
+          "timestamp",
+          "services"
+        ]
+      },
+      "UsageStatsResponseDto": {
+        "type": "object",
+        "properties": {
+          "minute": {
+            "type": "string",
+            "description": "The timestamp (binned to the requested granularity)"
+          },
+          "statusClass": {
+            "type": "string",
+            "description": "The HTTP status class (2, 3, 4, 5)"
+          },
+          "requestCount": {
+            "type": "number",
+            "description": "The number of requests in this period"
+          },
+          "avgTimeMs": {
+            "type": "number",
+            "description": "The average response time in milliseconds"
+          }
+        },
+        "required": [
+          "minute",
+          "statusClass",
+          "requestCount",
+          "avgTimeMs"
+        ]
+      }
+    }
+  },
+  "x-tagGroups": [
+    {
+      "name": "Management",
+      "tags": [
+        "auth",
+        "organizations",
+        "users",
+        "client-instances",
+        "it-partners",
+        "monitoring",
+        "data-changes"
+      ]
+    },
+    {
+      "name": "DATEV",
+      "tags": [
+        "DATEVconnect"
+      ]
+    }
+  ]
+}
