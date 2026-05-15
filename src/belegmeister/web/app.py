@@ -16,6 +16,8 @@ from __future__ import annotations
 
 import logging
 import os
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -25,6 +27,11 @@ from fastapi import Depends, FastAPI, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
+from belegmeister.env_validation import (
+    validate_base_url,
+    validate_required,
+    validate_secret,
+)
 from belegmeister.klardaten.client import KlardatenClient
 from belegmeister.web.request_view import (
     LetterSource,
@@ -50,7 +57,32 @@ _jinja_env = jinja2.Environment(
 )
 templates = Jinja2Templates(env=_jinja_env)
 
-app = FastAPI()
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    """Fail fast at startup: a missing/invalid env var must stop the
+    server coming up, not surface as a mid-request 500. Same checks the
+    CLI runs (shared `env_validation` helpers); ValueError → RuntimeError
+    so uvicorn aborts the boot."""
+    try:
+        validate_secret(
+            validate_required("MAGIC_LINK_SECRET", os.environ.get("MAGIC_LINK_SECRET"))
+        )
+        validate_base_url(
+            validate_required(
+                "MAGIC_LINK_BASE_URL", os.environ.get("MAGIC_LINK_BASE_URL")
+            )
+        )
+        validate_required("KLARDATEN_API_KEY", os.environ.get("KLARDATEN_API_KEY"))
+        validate_required(
+            "KLARDATEN_INSTANCE_ID", os.environ.get("KLARDATEN_INSTANCE_ID")
+        )
+    except ValueError as exc:
+        raise RuntimeError(f"Environment validation failed: {exc}") from exc
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
 
 
 def get_letter_source() -> LetterSource:

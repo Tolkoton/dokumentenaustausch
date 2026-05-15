@@ -32,9 +32,12 @@ from belegmeister.cli.create_request import (
     run_create_request,
 )
 from belegmeister.datev.upload import InvalidUploadTarget
+from belegmeister.env_validation import (
+    validate_base_url,
+    validate_required,
+    validate_secret,
+)
 from belegmeister.klardaten.client import KlardatenClient
-
-MIN_SECRET_BYTES = 32
 
 
 @dataclass(frozen=True)
@@ -54,33 +57,28 @@ class _EnvError(Exception):
 def _load_env_config() -> _EnvConfig:
     load_dotenv()
 
-    api_key = os.environ.get("KLARDATEN_API_KEY")
-    instance_id = os.environ.get("KLARDATEN_INSTANCE_ID")
     base_url = os.environ.get("KLARDATEN_BASE_URL", "https://api.klardaten.com")
     profile_id = os.environ.get("KLARDATEN_PROFILE_ID") or None
-    secret = os.environ.get("MAGIC_LINK_SECRET")
-    magic_base = os.environ.get("MAGIC_LINK_BASE_URL")
 
-    if not api_key:
-        raise _EnvError("KLARDATEN_API_KEY environment variable is required")
-    if not instance_id:
-        raise _EnvError("KLARDATEN_INSTANCE_ID environment variable is required")
-    if not secret:
-        raise _EnvError("MAGIC_LINK_SECRET environment variable is required")
-    if len(secret.encode()) < MIN_SECRET_BYTES:
-        raise _EnvError(
-            f"MAGIC_LINK_SECRET must be at least {MIN_SECRET_BYTES} bytes "
-            f"(got {len(secret.encode())})"
+    # Shared validators (also used by the web lifespan). They raise
+    # ValueError; the CLI surface wants _EnvError (printed, exit 1).
+    try:
+        api_key = validate_required(
+            "KLARDATEN_API_KEY", os.environ.get("KLARDATEN_API_KEY")
         )
-    if not magic_base:
-        raise _EnvError("MAGIC_LINK_BASE_URL environment variable is required")
-    if not (
-        magic_base.startswith("https://") or magic_base.startswith("http://localhost")
-    ):
-        raise _EnvError(
-            "MAGIC_LINK_BASE_URL must start with 'https://' "
-            "(or 'http://localhost' for development)"
+        instance_id = validate_required(
+            "KLARDATEN_INSTANCE_ID", os.environ.get("KLARDATEN_INSTANCE_ID")
         )
+        secret = validate_required(
+            "MAGIC_LINK_SECRET", os.environ.get("MAGIC_LINK_SECRET")
+        )
+        validate_secret(secret)
+        magic_base = validate_required(
+            "MAGIC_LINK_BASE_URL", os.environ.get("MAGIC_LINK_BASE_URL")
+        )
+        validate_base_url(magic_base)
+    except ValueError as exc:
+        raise _EnvError(str(exc)) from exc
 
     return _EnvConfig(
         klardaten_base_url=base_url,

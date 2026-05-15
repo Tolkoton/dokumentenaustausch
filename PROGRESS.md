@@ -279,12 +279,24 @@ reference) reverse-engineered against #395239:
   `docs/SECURITY.md` with deployment-time mitigations + the now-
   implemented tamper-detection table. No code change for this item.
 
+- ✅ **C1: web-startup env fail-fast — DONE.** New shared module
+  `belegmeister/env_validation.py` (3 pure helpers: `validate_required`,
+  `validate_secret` ≥32 *bytes*, `validate_base_url` https/localhost),
+  with its own unit tests. `web/app.py` gained a FastAPI `lifespan` that
+  runs the checks at startup and turns `ValueError → RuntimeError` so
+  uvicorn refuses to boot (no more mid-request `KeyError` → 500).
+  `__main__._load_env_config` migrated to the same helpers (real DRY,
+  not duplicated validation) — behaviour-preserving, verified the CLI
+  still emits the identical `error: …` message + graceful exit (not a
+  traceback). Tests: env_validation unit + lifespan via
+  `with TestClient(app)` (ok / each missing required / short secret /
+  non-https / localhost-ok). 67/67, mypy --strict (33), ruff clean.
+  Corrections from Step-0: env var is `KLARDATEN_INSTANCE_ID` (not
+  `X_CLIENT_INSTANCE_ID` — that's the HTTP header); secret threshold is
+  bytes not chars; `KLARDATEN_BASE_URL` stays optional (has a default).
+
 ### Still open
 
-- **Web-startup env fail-fast** — mirror Slice-2 `__main__` (secret
-  ≥32B, base URL https/localhost) at app startup (FastAPI lifespan)
-  instead of a mid-request `KeyError`. NOT a refactor — new behaviour
-  + tests; its own cycle (was option C1, deferred by the user).
 - Carried: investigate `.env` line-7 dotenv parse warning (user-side —
   `.env` is hard-deny for the agent; `sed -n '5,9p' .env`).
 
@@ -315,24 +327,45 @@ feat(web): GET /r/{token} — render client magic-link upload page
 - probe_download script + DMS-v2 memory updated with download section
 ```
 
-## Slice 4 — Structured questions (DESIGN PENDING, not started)
+## Slice 4 — Structured questions (DESIGN FINALIZED 2026-05-15, impl = separate session)
 
-Decided 2026-05-15: after seeing the working freeform Slice-3 page, the
-structured-questions idea — earlier rejected as premature — is now judged
-real product value (per-question answer fields matching what the SB
-sent), NOT cosmetic. This is an architectural change spanning Slices 2-4,
-to be run as its own master-architect design cycle with a fresh head
-AFTER the current work is committed. Do NOT implement ahead of design.
+Origin: after seeing the working freeform Slice-3 page, structured
+per-question answer fields are judged real product value (earlier
+rejected as premature). Spans Slices 2-4. Design is now locked — Step-0
+is closed. Do NOT implement here; implementation is its own session.
 
-Step-0 elicitation seeds (answer in the design cycle, not now):
+Fixed decisions (the contract for the implementation session):
 
-1. **Authoring** — how does the SB author questions? `--questions-file
-   JSON` on the Slice-2 CLI? a new field inside the letter-file? a
-   separate CLI subcommand?
-2. **Storage in the VGM** — separate `_request_questions_<ISO>.json`?
-   embedded in `_request_letter_*`? something else?
-3. **Submit mapping** — how do answers map back into DATEV: per-question
-   answer files? one structured `_response_*.json`?
-4. **Required vs optional** questions — is that a concept? per-question?
-5. **Backward compatibility** — old VGMs whose letter is freeform with
-   no questions: does the page degrade to the Slice-3 textarea?
+1. **Authoring** — the SB writes questions as plain text, one per line.
+   No JSON, no question IDs. New `--questions-file <path>` CLI arg on
+   Slice-2 `create-request`, separate from `--letter-file` (letter stays
+   for context/instructions). Two-file input.
+2. **Storage in the VGM** — a separate `_request_questions_<ISO>.txt`
+   alongside `_request_letter_<ISO>.md`. Plain text, copied as-is;
+   Slice-2 does NOT parse it.
+3. **Required vs optional** — all questions optional; the client may
+   skip any. Submit is allowed with empty fields, gated only by a single
+   "≥1 file OR ≥1 non-empty answer" guard (no fully-empty submit).
+4. **Submit mapping** — the submit slice writes a plain-text
+   `_response_<ISO>.txt` into the VGM:
+   ```
+   Q1: <question text>
+   A1: <client answer, or empty>
+
+   Q2: ...
+   A2: ...
+   ```
+   Client-uploaded files go into the VGM with a timestamp prefix as
+   already planned.
+5. **Backward compatibility** — graceful fallback. No
+   `_request_questions_*.txt` in the VGM → handler renders exactly like
+   Slice-3 (one textarea, no question fields). Implementation:
+   `questions = []` when the file is absent; template guards the
+   per-question block with `{% if questions %}`.
+
+Implementation touch points (for the impl session): Slice-2 CLI
+(`--questions-file`, upload second file), `request_view` (fetch +
+split `_request_questions_*.txt` → `list[str]`, newest by ISO like the
+letter; `[]` when absent), `request.html` (`{% if questions %}`
+per-question fields else the Slice-3 textarea), and the future submit
+slice (`_response_<ISO>.txt` writer + the ≥1-guard).
