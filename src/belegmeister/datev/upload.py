@@ -48,8 +48,13 @@ class UploadResult:
     error: str | None
 
 
-class _BinderClient(Protocol):
-    """Structural type for the injected client."""
+class BinderClient(Protocol):
+    """Structural type for the injected client.
+
+    Public so other modules (e.g. `belegmeister.cli.create_request`) can
+    type their own DI seams against the same shape without duplicating
+    the protocol or depending on the concrete `KlardatenClient`.
+    """
 
     def get_document(self, guid: str) -> dict[str, Any]: ...
 
@@ -61,7 +66,7 @@ class _BinderClient(Protocol):
 def upload_to_binder(
     file_path: Path,
     binder_guid: str,
-    klardaten_client: _BinderClient,
+    klardaten_client: BinderClient,
 ) -> UploadResult:
     """Validate the binder, then attach the file as a sub-document.
 
