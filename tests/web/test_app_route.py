@@ -104,11 +104,12 @@ def test_RT2_invalid_token_404_generic_no_disclosure_structured_log(
     body = r.text
     # generic message, no cause disclosure to the client
     assert "ungültig" in body or "abgelaufen" in body
-    assert "token_invalid" not in body
+    assert "token_bad_signature" not in body
     assert "token_expired" not in body
-    # structured server log: reason present, token NEVER logged
+    # structured server log: forged secret → bad_signature (tamper
+    # signal), reason present, token NEVER logged
     assert "magic_link_rejected" in caplog.text
-    assert "token_invalid" in caplog.text
+    assert "token_bad_signature" in caplog.text
     assert forged not in caplog.text
 
 

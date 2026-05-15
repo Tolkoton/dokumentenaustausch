@@ -34,19 +34,30 @@ import hmac
 import json
 from dataclasses import dataclass
 from datetime import datetime
+from enum import StrEnum
+
+
+class InvalidTokenReason(StrEnum):
+    """Structured rejection code. Consumers branch on identity, not on
+    the human message text (was a fragile cross-module string-match)."""
+
+    MALFORMED = "malformed"
+    BAD_SIGNATURE = "bad_signature"
+    EXPIRED = "expired"
 
 
 class InvalidToken(Exception):
     """The token is malformed, signed with a different secret, or expired.
 
-    The message embeds the rejection reason. The token itself is NEVER
-    embedded in the message — including it in logs/exceptions would leak
-    a still-valid credential.
+    `.reason` is a typed `InvalidTokenReason`; `.detail` is the human
+    description for logs. The token itself is NEVER passed in — including
+    it would leak a still-valid credential into logs/tracebacks.
     """
 
-    def __init__(self, reason: str) -> None:
+    def __init__(self, reason: InvalidTokenReason, detail: str = "") -> None:
         self.reason = reason
-        super().__init__(f"Invalid magic-link token: {reason}")
+        self.detail = detail
+        super().__init__(f"Invalid magic-link token: {detail or reason.value}")
 
 
 @dataclass(frozen=True)
@@ -94,7 +105,7 @@ def _compute_sig(*, payload_b64: str, secret: str) -> bytes:
 def _split_token(token: str) -> tuple[str, str]:
     parts = token.split(".", 1)
     if len(parts) != 2 or not parts[0] or not parts[1]:
-        raise InvalidToken("malformed: expected '<payload>.<sig>'")
+        raise InvalidToken(InvalidTokenReason.MALFORMED, "expected '<payload>.<sig>'")
     return parts[0], parts[1]
 
 
@@ -102,35 +113,48 @@ def _verify_signature(*, payload_b64: str, sig_b64: str, secret: str) -> None:
     try:
         actual_sig = _b64url_decode(sig_b64)
     except (ValueError, binascii.Error) as exc:
-        raise InvalidToken(f"malformed: signature not base64url ({exc})") from exc
+        raise InvalidToken(
+            InvalidTokenReason.MALFORMED,
+            f"signature not base64url ({exc})",
+        ) from exc
     expected_sig = _compute_sig(payload_b64=payload_b64, secret=secret)
     if not hmac.compare_digest(expected_sig, actual_sig):
-        raise InvalidToken("signature mismatch")
+        raise InvalidToken(InvalidTokenReason.BAD_SIGNATURE, "signature mismatch")
 
 
 def _decode_payload(payload_b64: str) -> TokenPayload:
     try:
         payload_bytes = _b64url_decode(payload_b64)
     except (ValueError, binascii.Error) as exc:
-        raise InvalidToken(f"malformed: payload not base64url ({exc})") from exc
+        raise InvalidToken(
+            InvalidTokenReason.MALFORMED,
+            f"payload not base64url ({exc})",
+        ) from exc
     try:
         data = json.loads(payload_bytes)
     except json.JSONDecodeError as exc:
-        raise InvalidToken(f"malformed: payload not JSON ({exc.msg})") from exc
+        raise InvalidToken(
+            InvalidTokenReason.MALFORMED,
+            f"payload not JSON ({exc.msg})",
+        ) from exc
     if not isinstance(data, dict):
-        raise InvalidToken("malformed: payload is not a JSON object")
+        raise InvalidToken(InvalidTokenReason.MALFORMED, "payload is not a JSON object")
     vgm_id_raw = data.get("vgm_id")
     exp_raw = data.get("exp")
     if not isinstance(vgm_id_raw, str) or not vgm_id_raw:
-        raise InvalidToken("payload missing or invalid 'vgm_id'")
+        raise InvalidToken(
+            InvalidTokenReason.MALFORMED, "payload missing or invalid 'vgm_id'"
+        )
     if not isinstance(exp_raw, int) or isinstance(exp_raw, bool):
-        raise InvalidToken("payload missing or invalid 'exp'")
+        raise InvalidToken(
+            InvalidTokenReason.MALFORMED, "payload missing or invalid 'exp'"
+        )
     return TokenPayload(vgm_id=vgm_id_raw, exp=exp_raw)
 
 
 def _check_not_expired(payload: TokenPayload, *, now: datetime) -> None:
     if int(now.timestamp()) >= payload.exp:
-        raise InvalidToken("expired")
+        raise InvalidToken(InvalidTokenReason.EXPIRED, "expired")
 
 
 def _b64url_encode(b: bytes) -> str:

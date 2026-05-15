@@ -88,7 +88,10 @@ def test_RV1_valid_token_single_letter_returns_request_view() -> None:
     assert src.download_calls == [1152156]
 
 
-def test_RV2_bad_signature_raises_token_invalid() -> None:
+def test_RV2_bad_signature_raises_token_bad_signature() -> None:
+    """Forged signature → distinct log_reason. A spike of these in the
+    server log is a tamper signal (someone forging tokens). Client still
+    sees a generic 404 — no disclosure."""
     src = _FakeLetterSource()
     forged = generate_token(
         vgm_id=VGM, expires_at=NOW + timedelta(days=3), secret="DIFFERENT" * 6
@@ -97,11 +100,13 @@ def test_RV2_bad_signature_raises_token_invalid() -> None:
     with pytest.raises(RequestLinkInvalid) as exc:
         resolve_request_view(forged, letter_source=src, secret=SECRET, now=NOW)
 
-    assert exc.value.log_reason == "token_invalid"
+    assert exc.value.log_reason == "token_bad_signature"
     assert src.list_calls == [], "must not touch DATEV on a bad token"
 
 
-def test_RV2_malformed_token_raises_token_invalid() -> None:
+def test_RV2_malformed_token_raises_token_malformed() -> None:
+    """Structurally broken token → distinct log_reason. A spike of these
+    is a benign signal (email truncation / copy-paste), not an attack."""
     src = _FakeLetterSource()
 
     with pytest.raises(RequestLinkInvalid) as exc:
@@ -109,15 +114,15 @@ def test_RV2_malformed_token_raises_token_invalid() -> None:
             "not-a-valid-token", letter_source=src, secret=SECRET, now=NOW
         )
 
-    assert exc.value.log_reason == "token_invalid"
+    assert exc.value.log_reason == "token_malformed"
     assert src.list_calls == []
 
 
 def test_RV3_expired_token_raises_token_expired() -> None:
-    """Real token, real verify_token, expiry in the past. Also pins the
-    cross-module `InvalidToken.reason == 'expired'` literal contract:
-    if Slice-2 changes that wording this test fails loudly (not silent
-    degradation to token_invalid)."""
+    """Real token, real verify_token, expiry in the past. Pins the
+    cross-module contract that an expired token maps to token_expired.
+    Coupling is now typed (InvalidTokenReason.EXPIRED identity), not a
+    string-match — a wording change can no longer silently degrade it."""
     src = _FakeLetterSource()
     expired = generate_token(
         vgm_id=VGM, expires_at=NOW - timedelta(seconds=1), secret=SECRET

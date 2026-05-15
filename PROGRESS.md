@@ -250,21 +250,43 @@ reference) reverse-engineered against #395239:
 - **`load_dotenv` gap invisible to unit tests** — dependency overrides
   meant the env-reading path was never exercised until smoke.
 
-### Open for next slice / housekeeping
+### Housekeeping log (2026-05-15)
+
+- ✅ **Root `main.py` stub deleted** (`git rm`, unreferenced uv-init
+  boilerplate). `mypy .` clean without it.
+- ✅ **mypy `files=` — closed without change.** The Slice-2 note to set
+  `["src","tests"]` was based on a misread: the Stop hook runs `mypy .`
+  (no-arg, ignores pyproject `files=`), so deleting `main.py` was the
+  real fix. `scripts` stays in `files=` (probe/smoke want type-checking).
+- ✅ **`InvalidToken` → `InvalidTokenReason` (StrEnum) — DONE.** Typed
+  `.reason` {MALFORMED, BAD_SIGNATURE, EXPIRED} + `.detail` (human text
+  for logs). All 9 raise sites + `request_view._verify` (enum identity,
+  no more `"expired"` string-match) + `test_token.py` (assert `.reason`,
+  not `match=`). Behaviour-preserving; 46/46.
+- ✅ **3-way log_reason split (done).** `_verify` maps each
+  `InvalidTokenReason` to a distinct server log_reason via
+  `_TOKEN_LOG_REASON`: `token_expired` / `token_malformed` /
+  `token_bad_signature`. Client still sees ONE generic 404 (no
+  disclosure); the split is log-only → free tamper-detection (spike of
+  `token_bad_signature` = forgery; `token_malformed` = benign
+  truncation). 5-line `_verify` change + 3 test-assertion updates,
+  RED+GREEN. Initially deferred as a future enhancement; user pulled it
+  into housekeeping scope. `log_reason` is a tested contract so this is
+  a small logging-boundary change, not pure refactor (honest framing).
+- ✅ **Token-in-access-log — documented, not fixed.** Inherent magic-link
+  property (token in URL path → uvicorn/proxy access logs, browser
+  history, Referer). App logger is clean (RT2 + smoke). Written up in
+  `docs/SECURITY.md` with deployment-time mitigations + the now-
+  implemented tamper-detection table. No code change for this item.
+
+### Still open
 
 - **Web-startup env fail-fast** — mirror Slice-2 `__main__` (secret
   ≥32B, base URL https/localhost) at app startup (FastAPI lifespan)
-  instead of a mid-request `KeyError`. Currently deps raise KeyError on
-  missing env.
-- **`InvalidToken` → structured `.reason_code`** (StrEnum / subclasses).
-  `_verify` string-matches the `"expired"` literal across modules. A
-  third consumer now exists — do the refactor in housekeeping.
-- **Token-in-access-log mitigation** — options: disable/scrub uvicorn
-  access log for `/r/`, or move token off the URL path (breaks the
-  click-a-link UX). Decide deliberately; short TTL limits exposure now.
-- Carried from Slice-2 housekeeping: delete root `main.py` stub; set
-  `[tool.mypy] files=["src","tests"]`; investigate `.env` line-7
-  dotenv parse warning.
+  instead of a mid-request `KeyError`. NOT a refactor — new behaviour
+  + tests; its own cycle (was option C1, deferred by the user).
+- Carried: investigate `.env` line-7 dotenv parse warning (user-side —
+  `.env` is hard-deny for the agent; `sed -n '5,9p' .env`).
 
 ### Files added / changed
 

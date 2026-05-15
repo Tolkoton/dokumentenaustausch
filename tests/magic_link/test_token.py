@@ -14,6 +14,7 @@ import pytest
 
 from belegmeister.magic_link.token import (
     InvalidToken,
+    InvalidTokenReason,
     TokenPayload,
     generate_token,
     verify_token,
@@ -81,8 +82,9 @@ def test_TV2_expired_token_raises_invalid_token() -> None:
 
     token = generate_token(vgm_id=vgm_id, expires_at=expires_at, secret=SECRET)
 
-    with pytest.raises(InvalidToken, match="expired"):
+    with pytest.raises(InvalidToken) as exc:
         verify_token(token=token, secret=SECRET, now=now)
+    assert exc.value.reason is InvalidTokenReason.EXPIRED
 
 
 def test_TV2_now_equal_to_exp_is_expired() -> None:
@@ -92,8 +94,9 @@ def test_TV2_now_equal_to_exp_is_expired() -> None:
 
     token = generate_token(vgm_id=vgm_id, expires_at=expires_at, secret=SECRET)
 
-    with pytest.raises(InvalidToken, match="expired"):
+    with pytest.raises(InvalidToken) as exc:
         verify_token(token=token, secret=SECRET, now=expires_at)
+    assert exc.value.reason is InvalidTokenReason.EXPIRED
 
 
 def test_TV3_wrong_secret_raises_signature_mismatch() -> None:
@@ -104,22 +107,25 @@ def test_TV3_wrong_secret_raises_signature_mismatch() -> None:
 
     token = generate_token(vgm_id=vgm_id, expires_at=expires_at, secret=SECRET)
 
-    with pytest.raises(InvalidToken, match="signature mismatch"):
+    with pytest.raises(InvalidToken) as exc:
         verify_token(token=token, secret=other_secret, now=now)
+    assert exc.value.reason is InvalidTokenReason.BAD_SIGNATURE
 
 
 def test_TV4_token_without_dot_raises_malformed() -> None:
     now = datetime(2026, 5, 15, 12, 0, 0, tzinfo=timezone.utc)
-    with pytest.raises(InvalidToken, match="malformed"):
+    with pytest.raises(InvalidToken) as exc:
         verify_token(token="no-dot-here", secret=SECRET, now=now)
+    assert exc.value.reason is InvalidTokenReason.MALFORMED
 
 
 def test_TV4_non_b64_segment_raises_malformed() -> None:
     """Token shaped like '<payload>.<sig>' but with characters outside the
     base64url alphabet must surface as InvalidToken, not raw binascii."""
     now = datetime(2026, 5, 15, 12, 0, 0, tzinfo=timezone.utc)
-    with pytest.raises(InvalidToken, match="malformed"):
+    with pytest.raises(InvalidToken) as exc:
         verify_token(token="!!!.@@@", secret=SECRET, now=now)
+    assert exc.value.reason is InvalidTokenReason.MALFORMED
 
 
 def test_TV4_payload_not_json_raises_malformed() -> None:
@@ -137,8 +143,9 @@ def test_TV4_payload_not_json_raises_malformed() -> None:
     sig_b64 = _b64url_encode_for_test(sig)
     token = f"{payload_b64}.{sig_b64}"
 
-    with pytest.raises(InvalidToken, match="malformed"):
+    with pytest.raises(InvalidToken) as exc:
         verify_token(token=token, secret=SECRET, now=now)
+    assert exc.value.reason is InvalidTokenReason.MALFORMED
 
 
 def _b64url_encode_for_test(b: bytes) -> str:
@@ -165,8 +172,10 @@ def _sign_test_payload(payload_obj: object) -> str:
 def test_TV5_payload_missing_vgm_id_raises() -> None:
     now = datetime(2026, 5, 15, 12, 0, 0, tzinfo=timezone.utc)
     token = _sign_test_payload({"exp": int((now + timedelta(days=1)).timestamp())})
-    with pytest.raises(InvalidToken, match="vgm_id"):
+    with pytest.raises(InvalidToken) as exc:
         verify_token(token=token, secret=SECRET, now=now)
+    assert exc.value.reason is InvalidTokenReason.MALFORMED
+    assert "vgm_id" in exc.value.detail
 
 
 def test_TV5_payload_vgm_id_wrong_type_raises() -> None:
@@ -174,19 +183,25 @@ def test_TV5_payload_vgm_id_wrong_type_raises() -> None:
     token = _sign_test_payload(
         {"vgm_id": 12345, "exp": int((now + timedelta(days=1)).timestamp())}
     )
-    with pytest.raises(InvalidToken, match="vgm_id"):
+    with pytest.raises(InvalidToken) as exc:
         verify_token(token=token, secret=SECRET, now=now)
+    assert exc.value.reason is InvalidTokenReason.MALFORMED
+    assert "vgm_id" in exc.value.detail
 
 
 def test_TV5_payload_exp_wrong_type_raises() -> None:
     now = datetime(2026, 5, 15, 12, 0, 0, tzinfo=timezone.utc)
     token = _sign_test_payload({"vgm_id": "abc", "exp": "soon"})
-    with pytest.raises(InvalidToken, match="exp"):
+    with pytest.raises(InvalidToken) as exc:
         verify_token(token=token, secret=SECRET, now=now)
+    assert exc.value.reason is InvalidTokenReason.MALFORMED
+    assert "exp" in exc.value.detail
 
 
 def test_TV5_payload_is_array_not_object_raises() -> None:
     now = datetime(2026, 5, 15, 12, 0, 0, tzinfo=timezone.utc)
     token = _sign_test_payload(["vgm_id", "exp"])
-    with pytest.raises(InvalidToken, match="payload"):
+    with pytest.raises(InvalidToken) as exc:
         verify_token(token=token, secret=SECRET, now=now)
+    assert exc.value.reason is InvalidTokenReason.MALFORMED
+    assert "payload" in exc.value.detail

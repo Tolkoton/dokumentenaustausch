@@ -22,7 +22,11 @@ from typing import Any, Protocol
 
 import httpx
 
-from belegmeister.magic_link.token import InvalidToken, verify_token
+from belegmeister.magic_link.token import (
+    InvalidToken,
+    InvalidTokenReason,
+    verify_token,
+)
 
 
 class LetterSource(Protocol):
@@ -76,6 +80,15 @@ class RequestView:
 
 _LETTER_PREFIX = "_request_letter_"
 
+# Token rejection → server-side log_reason. Exhaustive over
+# InvalidTokenReason; a new reason without an entry raises KeyError
+# (loud bug, by design — we never want a silent fallthrough here).
+_TOKEN_LOG_REASON: dict[InvalidTokenReason, str] = {
+    InvalidTokenReason.EXPIRED: "token_expired",
+    InvalidTokenReason.BAD_SIGNATURE: "token_bad_signature",
+    InvalidTokenReason.MALFORMED: "token_malformed",
+}
+
 
 def resolve_request_view(
     token: str,
@@ -102,7 +115,12 @@ def _verify(token: str, *, secret: str, now: datetime) -> str:
     try:
         payload = verify_token(token=token, secret=secret, now=now)
     except InvalidToken as exc:
-        reason = "token_expired" if exc.reason == "expired" else "token_invalid"
+        # Three distinct server-side log_reasons. The CLIENT always sees
+        # the same generic 404 (no disclosure); the split exists only in
+        # the log, giving free tamper-detection: a spike of
+        # token_bad_signature = someone forging tokens; a spike of
+        # token_malformed = benign email-truncation / copy-paste.
+        reason = _TOKEN_LOG_REASON[exc.reason]
         raise RequestLinkInvalid(log_reason=reason) from exc
     return payload.vgm_id
 
