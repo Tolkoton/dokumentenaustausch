@@ -104,6 +104,45 @@ class KlardatenClient:
             )
         return cast(dict[str, Any], data)
 
+    def list_structure_items(self, binder_guid: str) -> list[dict[str, Any]]:
+        """GET /datevconnect/dms/v2/documents/{guid}/structure-items.
+
+        Returns the binder's children (type=1 files carry document_file_id
+        + size; type=2 are sub-folders). The binder doc itself (GET
+        /documents/{guid}) does NOT include these — separate sub-resource.
+        """
+        url = (
+            f"{self.base_url.rstrip('/')}"
+            f"/datevconnect/dms/v2/documents/{binder_guid}/structure-items"
+        )
+        with httpx.Client(timeout=self.timeout) as client:
+            response = client.get(url, headers=self._auth_headers())
+            response.raise_for_status()
+            data = response.json()
+        if not isinstance(data, list):
+            raise httpx.DecodingError(
+                f"Expected JSON array from /structure-items, got {type(data).__name__}"
+            )
+        return cast(list[dict[str, Any]], data)
+
+    def download_document_file(self, document_file_id: int) -> bytes:
+        """GET /datevconnect/dms/v2/document-files/{id} → raw bytes.
+
+        DATEV mandates `Accept: application/octet-stream`; any other
+        Accept yields 400. Response has no content-length; the body is
+        the raw file (no JSON wrapper).
+        """
+        url = (
+            f"{self.base_url.rstrip('/')}"
+            f"/datevconnect/dms/v2/document-files/{document_file_id}"
+        )
+        headers = self._auth_headers()
+        headers["Accept"] = "application/octet-stream"
+        with httpx.Client(timeout=self.timeout) as client:
+            response = client.get(url, headers=headers)
+            response.raise_for_status()
+        return response.content
+
     def _auth_headers(self) -> dict[str, str]:
         headers: dict[str, str] = {
             "Authorization": f"Bearer {self.api_key}",

@@ -161,3 +161,156 @@ feat(cli): create-request — HMAC magic-link + letter upload into VGM
 - 25 tests (token 13, args 7, flow 5); smoke verified against
   VGM #395239 and #395357
 ```
+
+## Slice 3 — HTTP handler for the client magic-link page (DONE 2026-05-15)
+
+The client clicks the Slice-2 link → `GET /r/{token}` verifies the token
+(Slice-2 `verify_token`, imported not copied), lists the VGM's children,
+picks the newest `_request_letter_*.md`, downloads + UTF-8 decodes it,
+renders an HTML page (letter text + drag-drop zone + freeform response
+textarea + submit button). Any failure → one generic 404 page; the
+specific cause goes only to a structured server log (never the token).
+`POST /r/{token}/submit` is the next slice (form posts there; a click
+404s until then — intentional, verified not 405/500).
+
+### Spike first (download API was unproven)
+
+`GET /documents/{guid}` does NOT include children (Slice-1 memory was
+wrong). `scripts/probe_download_2026-05-15.py` (read-only, kept for
+reference) reverse-engineered against #395239:
+- children: `GET /documents/{guid}/structure-items` → JSON array
+  (type=1 file w/ `document_file_id`+`size`; type=2 sub-folder).
+- bytes: `GET /document-files/{id}` with **`Accept: application/
+  octet-stream`** (server self-describes the requirement in a 400).
+  Same upload API key works for download. Memory
+  `project-datev-dms-v2-schema` updated with a download section.
+
+### Modules
+
+- `src/belegmeister/web/request_view.py` (~159 LOC) — `resolve_request_view`
+  flow over SRP helpers (`_verify`, `_list_children`, `_pick_newest_letter`,
+  `_download_text`), `RequestView`, `RequestLinkInvalid` (structured
+  `log_reason` from a canonical list + `log_context`; token never in it),
+  `LetterSource` Protocol (public DI seam, same rationale as Slice-2
+  `BinderClient`).
+- `src/belegmeister/web/app.py` (~100 LOC) — FastAPI glue: `get_letter_source`
+  / `get_secret` / `get_now` deps (overridable in tests), `GET /r/{token}`,
+  `load_dotenv()` at import, explicit `jinja2.Environment(autoescape=True)`
+  (filename-independent XSS protection).
+- `templates/request.html`, `templates/invalid.html` (Tailwind CDN, `<pre>`
+  letter — no markdown render, autoescaped).
+- `KlardatenClient.list_structure_items` + `download_document_file` —
+  spike-proven thin wrappers, smoke-first (no mock-TDD, Slice-1 pattern).
+
+### Tests (21 web, 46 total, all green)
+
+- `test_request_view.py` — RV1 (happy), RV2 (token_invalid + no-DATEV-on-bad-
+  token), RV3 (token_expired, pins cross-module `"expired"` literal), RV4
+  (404→vgm_not_found vs 503/timeout→datev_error — narrowed from over-broad
+  catch), RV5 (download httpx→download_failed, non-httpx propagates as bug,
+  invalid-UTF8→letter_not_utf8). RV6 absorbed into RV5b.
+- `test_pick_newest_letter.py` — FS1-4 (newest/mixed/empty/single, all
+  test-as-contract) + FS5 (driven: added `.md` suffix check — a real gap
+  the test-as-contract streak had masked).
+- `test_app_route.py` — RT1 (200 HTML + form attrs), RT2 (404 generic, no
+  cause disclosure, structured log, token NOT in log), RT3 (XSS:
+  `<script>`→`&lt;script&gt;`).
+
+### Gates
+
+- ruff clean, mypy `--strict` (14 src), pytest 46/46.
+
+### Smoke (live uvicorn + real CLI links)
+
+- Bug caught: `app.py` never called `load_dotenv()` → under uvicorn
+  `KeyError: KLARDATEN_API_KEY` in `solve_dependencies` → bare 500. Unit
+  tests override deps so they were green. Fixed (load_dotenv at import).
+- Verified against fresh `python -m belegmeister create-request` links
+  for #395239 and #395357: happy 200 + letter HTML + correct form
+  (`/r/{token}/submit`, multipart, file+response inputs); corrupted
+  token → 404 generic; expired → 404 generic; `POST .../submit` → 404
+  (not 405/500); app logger clean (`reason=token_invalid context={}`,
+  no token). Browser/mobile visual check: user-side, post-commit.
+
+### Surprises
+
+- **Children are a sub-resource**, not part of the binder doc. Slice-1's
+  "structure_items in GET /documents" note was wrong.
+- **Download mandates `Accept: application/octet-stream`** — any other
+  Accept → 400 (the 400 body self-documents the requirement).
+- **Magic-link token leaks into ACCESS logs** — uvicorn (and any nginx/
+  LB) logs the request line `GET /r/<token>`, so the token lands in
+  access logs / browser history / Referer. Our *application* logger is
+  clean (RT2 verified); this is an inherent property of token-in-URL-
+  path, not a code leak. Mitigation deferred (open item).
+- **Premature SRP error-mapping in RV1 GREEN → false completeness.** The
+  test-as-contract streak (RV2/RV3, FS1-4) *felt* done but masked the
+  missing `.md` filter; only an extra spec-derived fixture (FS5) caught
+  it. Captured as a cross-session memory.
+- **`load_dotenv` gap invisible to unit tests** — dependency overrides
+  meant the env-reading path was never exercised until smoke.
+
+### Open for next slice / housekeeping
+
+- **Web-startup env fail-fast** — mirror Slice-2 `__main__` (secret
+  ≥32B, base URL https/localhost) at app startup (FastAPI lifespan)
+  instead of a mid-request `KeyError`. Currently deps raise KeyError on
+  missing env.
+- **`InvalidToken` → structured `.reason_code`** (StrEnum / subclasses).
+  `_verify` string-matches the `"expired"` literal across modules. A
+  third consumer now exists — do the refactor in housekeeping.
+- **Token-in-access-log mitigation** — options: disable/scrub uvicorn
+  access log for `/r/`, or move token off the URL path (breaks the
+  click-a-link UX). Decide deliberately; short TTL limits exposure now.
+- Carried from Slice-2 housekeeping: delete root `main.py` stub; set
+  `[tool.mypy] files=["src","tests"]`; investigate `.env` line-7
+  dotenv parse warning.
+
+### Files added / changed
+
+- New: `src/belegmeister/web/{__init__,app,request_view}.py`,
+  `src/belegmeister/web/templates/{request,invalid}.html`,
+  `tests/web/{__init__,test_request_view,test_pick_newest_letter,
+  test_app_route}.py`, `scripts/probe_download_2026-05-15.py`.
+- Modified: `src/belegmeister/klardaten/client.py` (+`list_structure_items`,
+  +`download_document_file`), `pyproject.toml`+`uv.lock` (fastapi,
+  uvicorn[standard], jinja2).
+
+Suggested commit message:
+
+```
+feat(web): GET /r/{token} — render client magic-link upload page
+
+- resolve_request_view: verify token (reuse Slice-2) -> list VGM
+  children -> newest _request_letter_*.md -> download+utf8 -> view;
+  any failure -> generic RequestLinkInvalid (structured log_reason,
+  token never logged)
+- FastAPI app: humble glue, overridable deps, load_dotenv at import,
+  explicit autoescape=True (filename-independent XSS guard)
+- KlardatenClient.list_structure_items + download_document_file
+  (spike-proven; Accept: application/octet-stream mandatory)
+- 21 web tests; smoke verified vs VGM #395239 and #395357
+- probe_download script + DMS-v2 memory updated with download section
+```
+
+## Slice 4 — Structured questions (DESIGN PENDING, not started)
+
+Decided 2026-05-15: after seeing the working freeform Slice-3 page, the
+structured-questions idea — earlier rejected as premature — is now judged
+real product value (per-question answer fields matching what the SB
+sent), NOT cosmetic. This is an architectural change spanning Slices 2-4,
+to be run as its own master-architect design cycle with a fresh head
+AFTER the current work is committed. Do NOT implement ahead of design.
+
+Step-0 elicitation seeds (answer in the design cycle, not now):
+
+1. **Authoring** — how does the SB author questions? `--questions-file
+   JSON` on the Slice-2 CLI? a new field inside the letter-file? a
+   separate CLI subcommand?
+2. **Storage in the VGM** — separate `_request_questions_<ISO>.json`?
+   embedded in `_request_letter_*`? something else?
+3. **Submit mapping** — how do answers map back into DATEV: per-question
+   answer files? one structured `_response_*.json`?
+4. **Required vs optional** questions — is that a concept? per-question?
+5. **Backward compatibility** — old VGMs whose letter is freeform with
+   no questions: does the page degrade to the Slice-3 textarea?
