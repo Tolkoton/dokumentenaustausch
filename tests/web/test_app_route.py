@@ -34,7 +34,7 @@ class _FakeSource:
             if children is not None
             else [
                 {
-                    "name": "_request_letter_2026-05-15T080805Z.md",
+                    "name": "_request_letter_2026-05-15T080805Z.txt",
                     "type": 1,
                     "counter": 2,
                     "document_file_id": 1152156,

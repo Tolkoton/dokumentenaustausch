@@ -20,17 +20,94 @@ NOW = datetime(2026, 5, 15, 12, 0, 0, tzinfo=timezone.utc)
 def _valid_data(**overrides: object) -> dict[str, object]:
     data: dict[str, object] = {
         "vgm_id": "11111111-1111-1111-1111-111111111111",
-        "letter_text": "Bitte Belege senden.",
-        "expires_at": NOW + timedelta(days=14),
+        "to": "mandant@example.com",
+        "cc": "kanzlei@example.com",
+        "subject": "Unterlagen 2026",
+        "body": "Bitte Belege senden.",
+        "questions": ["Wie hoch waren die Fahrtkosten?"],
+        "expires_at": NOW + timedelta(days=5),
     }
     data.update(overrides)
     return data
 
 
-def test_RC2_empty_letter_text_rejected() -> None:
-    with pytest.raises(ValidationError, match="letter_text"):
+def test_RC2_V1_valid_args_strip_headers_and_questions_keep_body_verbatim() -> None:
+    args = CreateRequestArgs.model_validate(
+        _valid_data(
+            to="  mandant@example.com  ",
+            subject="\tUnterlagen 2026 ",
+            questions=["  Frage eins?  ", "Frage zwei?"],
+            body="Zeile eins.\nZeile zwei.",
+        ),
+        context={"now": NOW},
+    )
+    assert args.to == "mandant@example.com"
+    assert args.subject == "Unterlagen 2026"
+    assert args.questions == ["Frage eins?", "Frage zwei?"]
+    assert args.body == "Zeile eins.\nZeile zwei."
+
+
+def test_RC2_V2_body_not_trimmed_leading_trailing_blanks_preserved() -> None:
+    # SB content reaches the VGM byte-for-byte: intentional indentation
+    # and surrounding blank lines survive validation unchanged.
+    body = "\n\n  Sehr geehrte Frau Müller,\n\n  ...\n\nMit freundlichen Grüßen\n\n"
+    args = CreateRequestArgs.model_validate(
+        _valid_data(body=body), context={"now": NOW}
+    )
+    assert args.body == body  # NOT stripped
+
+
+def test_RC2_V3_cc_optional_empty_and_absent_valid() -> None:
+    empty = CreateRequestArgs.model_validate(_valid_data(cc=""), context={"now": NOW})
+    assert empty.cc == ""
+    data = _valid_data()
+    del data["cc"]
+    absent = CreateRequestArgs.model_validate(data, context={"now": NOW})
+    assert absent.cc == ""
+
+
+def test_RC2_V4_questions_optional_empty_and_absent_valid() -> None:
+    empty = CreateRequestArgs.model_validate(
+        _valid_data(questions=[]), context={"now": NOW}
+    )
+    assert empty.questions == []
+    data = _valid_data()
+    del data["questions"]
+    absent = CreateRequestArgs.model_validate(data, context={"now": NOW})
+    assert absent.questions == []
+
+
+@pytest.mark.parametrize("field", ["to", "subject", "body"])
+@pytest.mark.parametrize("value", ["", "   ", "\t\n "])
+def test_RC2_V5_V6_required_text_blank_rejected(field: str, value: str) -> None:
+    with pytest.raises(ValidationError, match=field):
         CreateRequestArgs.model_validate(
-            _valid_data(letter_text=""), context={"now": NOW}
+            _valid_data(**{field: value}), context={"now": NOW}
+        )
+
+
+@pytest.mark.parametrize("field", ["to", "cc", "subject"])
+@pytest.mark.parametrize("newline", ["\n", "\r\n", "\r"])
+def test_RC2_V7_header_newline_rejected(field: str, newline: str) -> None:
+    with pytest.raises(ValidationError, match=field):
+        CreateRequestArgs.model_validate(
+            _valid_data(**{field: f"a{newline}b"}), context={"now": NOW}
+        )
+
+
+def test_RC2_V8_body_sentinel_collision_rejected() -> None:
+    with pytest.raises(ValidationError, match="body"):
+        CreateRequestArgs.model_validate(
+            _valid_data(body="ok line\n==BELEGMEISTER== end\nmore"),
+            context={"now": NOW},
+        )
+
+
+@pytest.mark.parametrize("bad", ["   ", "frage\nzeile2", "==BELEGMEISTER== fragen"])
+def test_RC2_V9_bad_question_rejected(bad: str) -> None:
+    with pytest.raises(ValidationError, match="question"):
+        CreateRequestArgs.model_validate(
+            _valid_data(questions=["gut?", bad]), context={"now": NOW}
         )
 
 

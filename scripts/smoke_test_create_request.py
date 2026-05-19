@@ -3,11 +3,12 @@
 Flow
 ----
 1. Resolve binder Dokumentnummer (UI-visible int) to GUID via klardaten.
-2. Write a fixed letter body to a temp file.
-3. Invoke `python -m belegmeister create-request` as a subprocess so the
-   real env-loading + argparse + exception-handling path is exercised
-   (not just the in-process flow).
-4. Print stdout (the magic-link URL) and what to verify in the DATEV UI.
+2. Write a fixed letter body + a questions file to temp files.
+3. Invoke `python -m belegmeister create-request` as a subprocess (with
+   --to/--cc/--subject/--body-file/--questions-file) so the real
+   env-loading + argparse + exception-handling path is exercised.
+4. Print stdout (the magic-link URL) and what to verify in the DATEV UI:
+   the uploaded file must carry the new request/v1 wire format.
 
 Usage
 -----
@@ -48,6 +49,13 @@ Den Upload-Link erhalten Sie unter der unten generierten URL.
 
 Mit freundlichen Grüßen,
 Belegmeister (Test-Smoke {stamp})
+"""
+
+QUESTIONS = """\
+Wie hoch waren die Fahrtkosten 2026?
+
+Gab es Nebeneinkünfte über 410 EUR?
+Wurde ein häusliches Arbeitszimmer genutzt?
 """
 
 
@@ -109,14 +117,20 @@ def main() -> int:
     print(f"  -> {binder_guid}")
 
     stamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H%M%SZ")
+    subject = f"Unterlagen Veranlagung 2026 (Smoke {stamp})"
+    to_addr = "mandant@example.com"
+    cc_addr = "kanzlei@example.com"
     with tempfile.TemporaryDirectory() as tmpdir:
-        letter_path = Path(tmpdir) / f"letter_{stamp}.txt"
-        letter_path.write_text(LETTER_BODY.format(stamp=stamp), encoding="utf-8")
+        body_path = Path(tmpdir) / f"body_{stamp}.txt"
+        body_path.write_text(LETTER_BODY.format(stamp=stamp), encoding="utf-8")
+        questions_path = Path(tmpdir) / f"questions_{stamp}.txt"
+        questions_path.write_text(QUESTIONS, encoding="utf-8")
 
         print(
             f"Running: python -m belegmeister create-request "
-            f"--vgm-id {binder_guid} --letter-file {letter_path.name} "
-            f"--ttl-days {args.ttl_days}"
+            f"--vgm-id {binder_guid} --to {to_addr} --cc {cc_addr} "
+            f"--subject '{subject}' --body-file {body_path.name} "
+            f"--questions-file {questions_path.name} --ttl-days {args.ttl_days}"
         )
         result = subprocess.run(
             [
@@ -126,8 +140,16 @@ def main() -> int:
                 "create-request",
                 "--vgm-id",
                 binder_guid,
-                "--letter-file",
-                str(letter_path),
+                "--to",
+                to_addr,
+                "--cc",
+                cc_addr,
+                "--subject",
+                subject,
+                "--body-file",
+                str(body_path),
+                "--questions-file",
+                str(questions_path),
                 "--ttl-days",
                 str(args.ttl_days),
             ],
@@ -146,8 +168,18 @@ def main() -> int:
     print("=" * 72)
     print("VERIFY in DATEV UI:")
     print(f"  Open VGM #{args.binder_number} ({binder_guid})")
-    print(f"  Look INSIDE the binder for: _request_letter_{stamp}.md")
-    print("  File should contain the German tax-doc request body.")
+    print(f"  Look INSIDE the binder for: _request_letter_{stamp}.txt")
+    print("  Open it — the file must show the request/v1 wire format:")
+    print("    line 1 : ==BELEGMEISTER== request/v1")
+    print(f"    To:     {to_addr}")
+    print(f"    Cc:     {cc_addr}")
+    print(f"    Subject: {subject}")
+    print("    <blank line> then the German tax-doc body (verbatim)")
+    print("    ==BELEGMEISTER== fragen")
+    print("    3 questions, one per line (blank line in source skipped)")
+    print("    ==BELEGMEISTER== end")
+    print("  Human-readable AND machine-parseable. The body must keep its")
+    print("  original blank lines / indentation (NOT trimmed).")
     print("=" * 72)
     print()
     print("Magic-link URL (copy & inspect — DO NOT email yet, no handler exists):")

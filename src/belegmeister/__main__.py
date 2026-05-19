@@ -100,11 +100,21 @@ def _build_parser() -> argparse.ArgumentParser:
         "(uploads letter, prints magic-link URL).",
     )
     create.add_argument("--vgm-id", required=True, help="VGM (binder) GUID")
+    create.add_argument("--to", required=True, help="Recipient email (To header)")
+    create.add_argument("--cc", default="", help="Cc email (optional)")
+    create.add_argument("--subject", required=True, help="Email subject")
     create.add_argument(
-        "--letter-file",
+        "--body-file",
         required=True,
         type=Path,
-        help="Path to letter file (UTF-8 text)",
+        help="Path to letter body file (UTF-8 text)",
+    )
+    create.add_argument(
+        "--questions-file",
+        type=Path,
+        default=None,
+        help="Optional: file with one question per line (UTF-8); "
+        "blank lines skipped. Omit entirely for zero questions.",
     )
     create.add_argument(
         "--ttl-days",
@@ -123,18 +133,39 @@ def _format_validation_error(exc: ValidationError) -> str:
     return "\n".join(lines)
 
 
-def _cmd_create_request(args: argparse.Namespace, env: _EnvConfig) -> int:
-    letter_path: Path = args.letter_file
+class _CliFileError(Exception):
+    """User-facing file-argument error (printed without traceback, exit 1)."""
+
+
+def _read_utf8(path: Path, label: str) -> str:
+    """Read a UTF-8 file argument or raise a clean _CliFileError. ONE
+    source of truth for file-arg error semantics — body-file and
+    questions-file get identical messages by construction."""
     try:
-        letter_text = letter_path.read_text(encoding="utf-8")
-    except FileNotFoundError:
-        print(f"error: letter file not found: {letter_path}", file=sys.stderr)
-        return 1
-    except UnicodeDecodeError:
-        print(
-            f"error: letter file must be UTF-8 encoded: {letter_path}",
-            file=sys.stderr,
+        return path.read_text(encoding="utf-8")
+    except FileNotFoundError as exc:
+        raise _CliFileError(f"{label} file not found: {path}") from exc
+    except UnicodeDecodeError as exc:
+        raise _CliFileError(f"{label} file must be UTF-8 encoded: {path}") from exc
+
+
+def _parse_questions_file(path: Path) -> list[str]:
+    """One question per line; blank lines skipped. Re-stripped by the
+    CreateRequestArgs validator (single source of truth for the rule)."""
+    text = _read_utf8(path, "questions")
+    return [line.strip() for line in text.splitlines() if line.strip()]
+
+
+def _cmd_create_request(args: argparse.Namespace, env: _EnvConfig) -> int:
+    try:
+        body = _read_utf8(args.body_file, "body")
+        questions = (
+            _parse_questions_file(args.questions_file)
+            if args.questions_file is not None
+            else []
         )
+    except _CliFileError as exc:
+        print(f"error: {exc}", file=sys.stderr)
         return 1
 
     now = datetime.now(timezone.utc)
@@ -144,7 +175,11 @@ def _cmd_create_request(args: argparse.Namespace, env: _EnvConfig) -> int:
         cr_args = CreateRequestArgs.model_validate(
             {
                 "vgm_id": args.vgm_id,
-                "letter_text": letter_text,
+                "to": args.to,
+                "cc": args.cc,
+                "subject": args.subject,
+                "body": body,
+                "questions": questions,
                 "expires_at": expires_at,
             },
             context={"now": now},

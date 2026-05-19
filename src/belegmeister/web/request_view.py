@@ -2,7 +2,7 @@
 upload page. Pure logic, no HTTP framework — `web.app` is the glue.
 
 Flow: verify token (Slice-2 `verify_token`, imported not copied) → list
-the VGM's children → pick the newest `_request_letter_*.md` by ISO name
+the VGM's children → pick the newest `_request_letter_*.txt` by ISO name
 → download + UTF-8 decode its bytes → `RequestView`.
 
 Any failure becomes a single generic `RequestLinkInvalid`. The specific
@@ -26,6 +26,10 @@ from belegmeister.magic_link.token import (
     InvalidToken,
     InvalidTokenReason,
     verify_token,
+)
+from belegmeister.vgm_files import (
+    REQUEST_LETTER_PREFIX,
+    REQUEST_LETTER_SUFFIX,
 )
 
 
@@ -55,7 +59,7 @@ class RequestLinkInvalid(Exception):
                             SB typed a wrong id) — tell the SB
       - "datev_error"     : any other DATEV failure (5xx, auth, timeout,
                             decode) — operational, may need on-call
-      - "letter_missing"  : no `_request_letter_*.md` child in the VGM
+      - "letter_missing"  : no `_request_letter_*.txt` child in the VGM
       - "download_failed" : document-file GET errored / non-200
       - "letter_not_utf8" : letter bytes are not valid UTF-8
 
@@ -78,7 +82,9 @@ class RequestView:
     letter_text: str
 
 
-_LETTER_PREFIX = "_request_letter_"
+# Shared with the writer (see request_format) — single source of truth
+# for the request-letter filename so writer/reader never diverge.
+_LETTER_PREFIX = REQUEST_LETTER_PREFIX
 
 # Token rejection → server-side log_reason. Exhaustive over
 # InvalidTokenReason; a new reason without an entry raises KeyError
@@ -152,7 +158,7 @@ def _pick_newest_letter(
         if c.get("type") == 1
         and isinstance(c.get("name"), str)
         and c["name"].startswith(_LETTER_PREFIX)
-        and c["name"].endswith(".md")
+        and c["name"].endswith(REQUEST_LETTER_SUFFIX)
     ]
     if not letters:
         raise RequestLinkInvalid(

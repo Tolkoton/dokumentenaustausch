@@ -22,6 +22,7 @@ from belegmeister.cli.create_request import (
     run_create_request,
 )
 from belegmeister.datev.upload import InvalidUploadTarget
+from belegmeister.request_format import RequestLetter, serialize_request_letter
 
 SECRET = "k" * 48
 BASE_URL = "https://app.example.com"
@@ -62,13 +63,16 @@ class _FakeBinderClient:
 def _make_args(
     *,
     vgm_id: str = "11111111-1111-1111-1111-111111111111",
-    letter_text: str = "Bitte senden Sie uns Belege für 2026.",
     ttl_days: int = 7,
 ) -> CreateRequestArgs:
     return CreateRequestArgs.model_validate(
         {
             "vgm_id": vgm_id,
-            "letter_text": letter_text,
+            "to": "mandant@example.com",
+            "cc": "kanzlei@example.com",
+            "subject": "Unterlagen 2026",
+            "body": "Bitte senden Sie uns Belege für 2026.",
+            "questions": ["Wie hoch waren die Fahrtkosten?"],
             "expires_at": NOW + timedelta(days=ttl_days),
         },
         context={"now": NOW},
@@ -92,8 +96,18 @@ def test_RC1_happy_path_uploads_letter_and_returns_magic_link_url() -> None:
     call = client.attach_calls[0]
     assert call["binder_guid"] == args.vgm_id
     assert call["file_name"].startswith("_request_letter_")
-    assert call["file_name"].endswith(".md")
-    assert call["file_bytes"].decode("utf-8") == args.letter_text
+    assert call["file_name"].endswith(".txt")  # F3: .txt (Notepad-openable)
+    # F1: serialized request-letter format is uploaded, NOT raw body.
+    expected = serialize_request_letter(
+        RequestLetter(
+            to=args.to,
+            cc=args.cc,
+            subject=args.subject,
+            body=args.body,
+            questions=tuple(args.questions),
+        )
+    )
+    assert call["file_bytes"].decode("utf-8") == expected
 
     # URL shape: <base>/r/<token>
     assert url.startswith(f"{BASE_URL}/r/")

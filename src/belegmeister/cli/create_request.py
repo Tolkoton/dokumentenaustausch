@@ -15,7 +15,7 @@ This module does NOT:
   (next slice)
 - send email or otherwise notify the client (out of scope)
 - deduplicate or guard against re-running (a second invocation creates a
-  second `_request_letter_*.md` inside the VGM — that's a feature, not a
+  second `_request_letter_*.txt` inside the VGM — that's a feature, not a
   bug: each run is auditable)
 - verify-after-upload via GET (relies on `UploadResult.success`; future
   slice can add a roundtrip check)
@@ -31,6 +31,14 @@ from pydantic import BaseModel, Field, ValidationInfo, field_validator
 
 from belegmeister.datev.upload import BinderClient, upload_to_binder
 from belegmeister.magic_link.token import generate_token
+from belegmeister.request_format import (
+    RequestLetter,
+    has_sentinel_collision,
+    is_blank,
+    is_single_line,
+    serialize_request_letter,
+)
+from belegmeister.vgm_files import request_letter_filename
 
 # Maximum lifetime of a magic-link from creation. Tax docs are either
 # submitted within a week or forgotten; an expired link is cheaply
@@ -66,8 +74,74 @@ class CreateRequestArgs(BaseModel):
     """
 
     vgm_id: str = Field(min_length=1)
-    letter_text: str = Field(min_length=1)
+    to: str
+    cc: str = ""
+    subject: str
+    body: str
+    questions: list[str] = Field(default_factory=list)
     expires_at: datetime
+
+    # Validators wrap the shared request_format predicates (one source
+    # of truth) and raise ValueError -> ValidationError. The codec's
+    # _reject_* helpers wrap the SAME predicates and raise
+    # RequestLetterMalformed. See CLAUDE.md "Single source of truth".
+
+    @field_validator("to", "subject")
+    @classmethod
+    def _required_single_line_header(cls, v: str) -> str:
+        # Strip: leading/trailing whitespace on a header is meaningless
+        # and parse_request_letter strips it anyway — pre-strip keeps the
+        # round-trip exact (codec B12).
+        stripped = v.strip()
+        if is_blank(stripped):
+            raise ValueError("must not be blank")
+        if not is_single_line(stripped):
+            raise ValueError("must be a single line (no newline / CR)")
+        return stripped
+
+    @field_validator("cc")
+    @classmethod
+    def _optional_single_line_cc(cls, v: str) -> str:
+        stripped = v.strip()
+        if stripped and not is_single_line(stripped):
+            raise ValueError("must be a single line (no newline / CR)")
+        return stripped
+
+    @field_validator("body")
+    @classmethod
+    def _non_blank_body_verbatim(cls, v: str) -> str:
+        # NOT stripped by design: the SB's body reaches the VGM
+        # byte-for-byte (intentional leading/trailing blank lines,
+        # indentation). Only a wholly-blank body is rejected.
+        if is_blank(v):
+            raise ValueError("must not be blank")
+        if has_sentinel_collision(v):
+            raise ValueError(
+                "must not contain a line starting with the reserved request marker"
+            )
+        return v
+
+    @field_validator("questions")
+    @classmethod
+    def _clean_questions(cls, v: list[str]) -> list[str]:
+        cleaned: list[str] = []
+        for index, question in enumerate(v):
+            # Deliberate strip: a question is single-line; surrounding
+            # whitespace is meaningless (unlike body, this is NOT a
+            # verbatim field). Empty list stays empty (zero questions ok).
+            stripped = question.strip()
+            if is_blank(stripped):
+                raise ValueError(f"question {index} must not be blank")
+            if not is_single_line(stripped):
+                raise ValueError(
+                    f"question {index} must be a single line (no newline / CR)"
+                )
+            if has_sentinel_collision(stripped):
+                raise ValueError(
+                    f"question {index} must not contain the reserved request marker"
+                )
+            cleaned.append(stripped)
+        return cleaned
 
     @field_validator("expires_at")
     @classmethod
@@ -106,10 +180,18 @@ def run_create_request(
     Returns the magic-link URL (caller prints to stdout).
     """
     iso_now = now.astimezone(timezone.utc).strftime("%Y-%m-%dT%H%M%SZ")
-    filename = f"_request_letter_{iso_now}.md"
+    filename = request_letter_filename(iso_now)
+    letter = RequestLetter(
+        to=args.to,
+        cc=args.cc,
+        subject=args.subject,
+        body=args.body,
+        questions=tuple(args.questions),
+    )
+    content = serialize_request_letter(letter)
     with tempfile.TemporaryDirectory() as tmpdir:
         letter_path = Path(tmpdir) / filename
-        letter_path.write_text(args.letter_text, encoding="utf-8")
+        letter_path.write_text(content, encoding="utf-8")
         result = upload_to_binder(letter_path, args.vgm_id, klardaten_client)
     if not result.success:
         raise UploadFailed(vgm_id=args.vgm_id, reason=result.error or "unknown error")

@@ -369,3 +369,51 @@ split `_request_questions_*.txt` → `list[str]`, newest by ISO like the
 letter; `[]` when absent), `request.html` (`{% if questions %}`
 per-question fields else the Slice-3 textarea), and the future submit
 slice (`_response_<ISO>.txt` writer + the ≥1-guard).
+
+## Slice 4a — request-letter format (codec) + shared core + CLI (DONE 2026-05-19)
+
+First SB-side slice's foundation. Single `_request_letter_<ISO>.txt`
+now carries email metadata + body + questions in one human-readable,
+machine-parseable, collision-proof wire format; CLI updated to produce
+it; web app (4b) deferred to its own slice.
+
+- Modules:
+  - `request_format.py` (~250 LOC) — `request/v1` codec: `RequestLetter`,
+    `serialize_request_letter`, `parse_request_letter`,
+    `RequestLetterMalformed`, shared predicates `is_single_line` /
+    `has_sentinel_collision` / `is_blank` (one source of truth, both
+    the codec guards and `CreateRequestArgs` call them).
+  - `vgm_files.py` (new, ~35 LOC) — strictly-bounded VGM file-naming
+    module: `REQUEST_LETTER_PREFIX/SUFFIX`, `request_letter_filename`.
+  - `cli/create_request.py` — `CreateRequestArgs` extended
+    (to/cc/subject/body/questions, `letter_text` dropped);
+    `run_create_request` serializes via the codec (signature unchanged).
+  - `__main__.py` — `--to/--cc/--subject/--body-file/--questions-file`
+    replace `--letter-file`; shared `_read_utf8` for symmetric file errs.
+  - `web/request_view.py` — filter repointed to the shared affixes.
+- Tests: 17 codec behaviors (B1–B17, 34 tests) + V1–V9 model + F1–F3
+  flow + M1–M8 CLI + VF1–VF3 vgm_files + Slice-3 FS tests inverted to
+  `.txt`. Full suite green, ruff clean, mypy --strict clean (38 files).
+- Smoke: PASSED against test VGM #395357 — `_request_letter_<ISO>.txt`
+  uploaded, opened in DATEV UI, `request/v1` format confirmed (headers,
+  verbatim body, fragen markers, questions). Writer/reader consistency
+  is structural (shared `vgm_files`), not smoke-verified end-to-end.
+- Surprises / supersedes:
+  - **Supersedes Slice-4 design decision #2**: questions are NOT a
+    separate `_request_questions_<ISO>.txt`. They are embedded in the
+    single `_request_letter_<ISO>.txt` via the `==BELEGMEISTER== fragen`
+    machine-marker. The submit slice's `_response_<ISO>.txt` /
+    `beantwortete_fragen_<ISO>.txt` mapping must read questions from the
+    codec (`parse_request_letter`), not from a separate file.
+  - File extension changed `.md` → `.txt` (Notepad-openable on stock
+    Windows; content was always plain text). FS5 filter test inverted.
+  - Codec parse hardened against silent-misparse (out-of-order markers,
+    injected markers, dup headers) — every structural defect raises
+    `RequestLetterMalformed`, never a bare ValueError.
+- Open for next slice:
+  - **Slice 4b** — SB web form (`sb/app.py` on :8731, templates,
+    Add-Question JS, lifespan, port helper) calling the ready 4a core.
+  - Client-render of questions at `/r/{token}` is still the Slice-3
+    layout (deferred, expected). It will consume `parse_request_letter`.
+  - `beantwortete_fragen_<ISO>.txt` naming reserved; goes into
+    `vgm_files.py` only when the submit slice actually touches it.

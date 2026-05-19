@@ -42,7 +42,7 @@ class _FakeLetterSource:
             if children is not None
             else [
                 {
-                    "name": "_request_letter_2026-05-15T080805Z.md",
+                    "name": "_request_letter_2026-05-15T080805Z.txt",
                     "counter": 2,
                     "type": 1,
                     "parent_counter": 0,
@@ -82,7 +82,7 @@ def test_RV1_valid_token_single_letter_returns_request_view() -> None:
 
     assert isinstance(view, RequestView)
     assert view.vgm_id == VGM
-    assert view.letter_filename == "_request_letter_2026-05-15T080805Z.md"
+    assert view.letter_filename == "_request_letter_2026-05-15T080805Z.txt"
     assert view.letter_text == _LETTER_BYTES.decode("utf-8")
     assert src.list_calls == [VGM]
     assert src.download_calls == [1152156]
