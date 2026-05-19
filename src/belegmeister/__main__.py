@@ -38,6 +38,7 @@ from belegmeister.env_validation import (
     validate_secret,
 )
 from belegmeister.klardaten.client import KlardatenClient
+from belegmeister.validation_errors import validation_error_items
 
 
 @dataclass(frozen=True)
@@ -126,10 +127,12 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def _format_validation_error(exc: ValidationError) -> str:
+    # Thin CLI wrapper over the shared extractor (single source of truth;
+    # the SB web surface groups the same items per form field). Output is
+    # byte-identical to the pre-extraction inline version.
     lines = ["invalid arguments:"]
-    for err in exc.errors():
-        loc = ".".join(str(p) for p in err["loc"]) or "<root>"
-        lines.append(f"  - {loc}: {err['msg']}")
+    for loc, msg in validation_error_items(exc):
+        lines.append(f"  - {loc}: {msg}")
     return "\n".join(lines)
 
 

@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Belegmeister — Dokumentanforderung erstellen</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-100 min-h-screen py-10">
+  <main class="max-w-2xl mx-auto bg-white rounded-xl shadow p-8">
+    <h1 class="text-xl font-semibold text-slate-800 mb-1">
+      Dokumentanforderung erstellen
+    </h1>
+    <p class="text-sm text-slate-500 mb-6">
+      Lokales Kanzlei-Werkzeug. Der erzeugte Link wird anschließend
+      manuell an den Mandanten weitergegeben.
+    </p>
+
+    {% if banner %}
+    <div class="mb-6 rounded border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800">
+      {{ banner }}
+    </div>
+    {% endif %}
+
+    <form action="/sb/create" method="POST" class="space-y-5"
+          onsubmit="return lockSubmit(this)">
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1">
+          VGM-Nummer (Dokumentnummer aus DATEV)
+        </label>
+        <input type="text" name="vgm_number" value="{{ form.vgm_number }}"
+               class="w-full border border-slate-300 rounded p-2 text-sm">
+        {% if field_errors.get('vgm_number') %}
+        <p class="mt-1 text-sm text-red-700">{{ field_errors['vgm_number'] }}</p>
+        {% endif %}
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1">An (To)</label>
+        <input type="text" name="to" value="{{ form.to }}"
+               class="w-full border border-slate-300 rounded p-2 text-sm">
+        {% if field_errors.get('to') %}
+        <p class="mt-1 text-sm text-red-700">{{ field_errors['to'] }}</p>
+        {% endif %}
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1">
+          Cc (optional)
+        </label>
+        <input type="text" name="cc" value="{{ form.cc }}"
+               class="w-full border border-slate-300 rounded p-2 text-sm">
+        {% if field_errors.get('cc') %}
+        <p class="mt-1 text-sm text-red-700">{{ field_errors['cc'] }}</p>
+        {% endif %}
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1">Betreff</label>
+        <input type="text" name="subject" value="{{ form.subject }}"
+               class="w-full border border-slate-300 rounded p-2 text-sm">
+        {% if field_errors.get('subject') %}
+        <p class="mt-1 text-sm text-red-700">{{ field_errors['subject'] }}</p>
+        {% endif %}
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1">Anschreiben</label>
+        <textarea name="body" rows="8"
+                  class="w-full border border-slate-300 rounded p-2 text-sm font-mono">{{ form.body }}</textarea>
+        {% if field_errors.get('body') %}
+        <p class="mt-1 text-sm text-red-700">{{ field_errors['body'] }}</p>
+        {% endif %}
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1">
+          Rückfragen (optional)
+        </label>
+        {% if field_errors.get('questions') %}
+        <p class="mb-2 text-sm text-red-700">{{ field_errors['questions'] }}</p>
+        {% endif %}
+        <div id="questions">
+          {% for q in questions %}
+          <div class="question-row mb-2">
+            <div class="flex gap-2 items-center">
+              <span class="q-label text-xs text-slate-500 w-16 shrink-0">Frage {{ loop.index }}</span>
+              <input type="text" name="questions" value="{{ q }}"
+                     class="flex-1 border border-slate-300 rounded p-2 text-sm">
+              <button type="button" onclick="removeQuestion(this)"
+                      class="px-3 rounded border border-slate-300 text-slate-500 hover:bg-slate-100">
+                &times;
+              </button>
+            </div>
+            {% if question_errors.get(loop.index0) %}
+            <p class="mt-1 ml-[4.5rem] text-sm text-red-700">{{ question_errors[loop.index0] }}</p>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+        <button type="button" id="add-question" onclick="addQuestion()"
+                class="mt-1 text-sm text-slate-700 underline hover:text-slate-900">
+          + Frage hinzufügen
+        </button>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <button type="submit" id="submit-btn"
+                class="bg-slate-800 text-white px-5 py-2 rounded hover:bg-slate-700 disabled:opacity-50">
+          Anforderung erstellen
+        </button>
+        <span id="progress" class="hidden items-center gap-2 text-sm text-slate-600">
+          <span class="inline-block h-4 w-4 rounded-full border-2 border-slate-300 border-t-slate-700 animate-spin"></span>
+          <span>VGM-Nummer wird in DATEV gesucht … bei vielen Dokumenten
+            kann dies einige Zeit dauern. Bitte nicht neu laden.</span>
+        </span>
+      </div>
+    </form>
+  </main>
+
+  <template id="question-template">
+    <div class="question-row mb-2">
+      <div class="flex gap-2 items-center">
+        <span class="q-label text-xs text-slate-500 w-16 shrink-0">Frage</span>
+        <input type="text" name="questions"
+               class="flex-1 border border-slate-300 rounded p-2 text-sm">
+        <button type="button" onclick="removeQuestion(this)"
+                class="px-3 rounded border border-slate-300 text-slate-500 hover:bg-slate-100">
+          &times;
+        </button>
+      </div>
+    </div>
+  </template>
+
+  <script>
+    // Server renders questions + co-located errors; JS only handles
+    // add/remove of rows. Renumbering keeps the visible "Frage N"
+    // labels aligned with row order after any add/remove (so a later
+    // re-render's server numbering and the live DOM never disagree).
+    function renumber() {
+      document.querySelectorAll("#questions .q-label").forEach(function (el, i) {
+        el.textContent = "Frage " + (i + 1);
+      });
+    }
+    function addQuestion() {
+      const tpl = document.getElementById("question-template");
+      const row = tpl.content.firstElementChild.cloneNode(true);
+      document.getElementById("questions").appendChild(row);
+      renumber();
+      row.querySelector("input").focus();
+    }
+    function removeQuestion(btn) {
+      btn.closest(".question-row").remove();
+      renumber();
+    }
+    // Double-submit hygiene: the core is intentionally non-idempotent
+    // (each run = one auditable letter), so a double-clicked submit
+    // would create two letters/links. Disable the button on first
+    // submit. (Refresh-resubmit via PRG is deliberately NOT done —
+    // it would put the magic-link token in a GET URL / access log.)
+    function lockSubmit(form) {
+      const btn = document.getElementById("submit-btn");
+      btn.disabled = true;
+      btn.textContent = "Wird erstellt …";
+      // Liveness: the VGM lookup may scan many DATEV pages for a
+      // not-found number — without a moving indicator the SB cannot
+      // tell "slow" from "dead" and reloads (losing input). Show an
+      // animated spinner + an explanatory line.
+      const p = document.getElementById("progress");
+      p.classList.remove("hidden");
+      p.classList.add("flex");
+      return true;
+    }
+    // Footgun guard: Enter in a single-line question <input> would
+    // otherwise submit the WHOLE form (default HTML behaviour) while the
+    // SB is still adding questions. Delegated so dynamically-cloned rows
+    // are covered too: Enter -> add a new question row instead.
+    document.getElementById("questions").addEventListener("keydown", function (e) {
+      if (e.key === "Enter" && e.target.matches('input[name="questions"]')) {
+        e.preventDefault();
+        addQuestion();
+      }
+    });
+  </script>
+</body>
+</html>

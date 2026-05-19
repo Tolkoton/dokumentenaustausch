@@ -417,3 +417,151 @@ it; web app (4b) deferred to its own slice.
     layout (deferred, expected). It will consume `parse_request_letter`.
   - `beantwortete_fragen_<ISO>.txt` naming reserved; goes into
     `vgm_files.py` only when the submit slice actually touches it.
+
+## Slice 4b — SB request-creation web form — PENDING RECONCILIATION, **BLOCKED** (2026-05-19)
+
+Code-complete, all gates green, but **NOT shipped, NOT closed**. This is
+a flushed ledger, not the final DONE entry — 4b closes only when the
+resolver-perf BLOCKER is fixed AND smoke step 8b's measured not-found
+duration is recorded here.
+
+### State
+
+- New `belegmeister.sb.app` (separate FastAPI object from `web.app` so a
+  public `/r/` deploy never exposes `/sb`). `GET /sb` form, `POST
+  /sb/create` reusing the 4a core (`run_create_request` /
+  `CreateRequestArgs`) verbatim — no parallel request logic. Lifespan =
+  shared `env_validation` (C1 mirror). Templates Jinja2 autoescape.
+- `belegmeister/validation_errors.py` — shared `validation_error_items`
+  (single source of truth; CLI `__main__._format_validation_error`
+  rewired to it, proven byte-identical by `tests/test_validation_errors.py`).
+- Behaviours B1–B15, gates: **sb 26/26, full 165/165**, ruff clean,
+  `mypy --strict` 46 files clean.
+- New dep: `python-multipart` (FastAPI form parsing; added via `uv add`).
+
+### Behaviour map (B1–B15)
+
+B1 GET form · B2 happy create+copyable link · B3 zero-questions · B4
+multi-question order · B5 non-numeric vgm (`FormValidationError`, field)
+· B6 unknown number (`VgmNotResolved`, field, "nicht gefunden") · B7
+scalar `ValidationError` (field) · B8 question `ValidationError`
+co-located at the 0-based row (`_QUESTION_INDEX_RE` = cross-layer pin of
+the 4a message) · B9 `UploadFailed`/`InvalidUploadTarget` curated banner
+· B10 autoescape every echoed surface + `<script`-count invariant · B11
+lifespan fail-fast (C1 mirror) · B12 resolver `httpx.HTTPError`
+classified (transient vs 4xx, no false "retry") · B13 local `OSError`
+distinct banner · B14 pre-handler `RequestValidationError` → salvaged
+re-render @200 · B15 `GET /sb/create` → 303 `/sb`. Invariant: every
+friendly re-render is HTTP 200 (B5–B14 uniform).
+
+### BLOCKER (B) — resolver not-found latency (owner verdict: NOT shippable)
+
+`resolve_binder_guid_by_number` concludes "not found" only by scanning
+**every** DATEV document page (`max_pages=50 × page_size=1000`, up to 50
+sequential GETs); DATEV ignores `$filter`/`?number=` (Slice-1). The 30s
+`KlardatenClient.timeout` bounds ONE page, not the total. Measured
+**~45s** not-found resolve, **growing with DATEV size** → owner verdict
+2026-05-19: not shippable. 4b **cannot self-fix** — lowering `max_pages`
+would falsely report a real binder as "nicht gefunden" (correctness
+regression). Fix must live in the resolver layer; a thread/deadline bolt
+inside 4b is explicitly rejected. 4b mitigations applied (UX only): a
+moving liveness spinner + "wird in DATEV gesucht …" (slow ≠ dead) and
+the existing per-request 30s timeout (a true hang degrades to B12 within
+30s, never infinite). **Smoke step 8b real measured duration: `<TBD —
+mandatory before close>`.**
+
+**Next slice = resolver performance, SPIKE-FIRST, no pre-commit:** (1)
+re-verify live whether DATEV/Klardaten has ANY direct lookup-by-number
+(re-check despite the Slice-1 `$filter`-ignored note); (2) if yes → O(1)
+direct lookup; (3) if no → owner chooses (a) cached number→GUID index
+(fast, staleness window) or (b) deadline-aware resolver (~8–10s →
+honest "DATEV antwortet zu langsam", never fake "nicht gefunden"). That
+work is a spike (live-DATEV gates, not TestClient) — flag in its Step 0.
+Tracked in memory `project_slice4b_blocked_resolver_perf`.
+
+### Conscious decisions / scope (ledger)
+
+- **Launcher → Slice 4c** (port-bind 8731, port-busy→open existing,
+  open browser at `/sb` since 4b has no root route by design). 4b run by
+  `uvicorn` by hand; it does NOT enforce the loopback bind — 4c must
+  bind `127.0.0.1`; running `--host 0.0.0.0` would expose an
+  unauthenticated form.
+- **Double-submit:** core dedup out-of-scope (intentionally
+  non-idempotent — "each run auditable"; future "re-issue/supersede").
+  `lockSubmit` JS disables the button (double-click hygiene) — shipped.
+  **PRG deliberately rejected** (would put the magic-link token in a GET
+  URL / access log — the Slice-3 hazard).
+- **Email-format in `to`/`cc` intentionally unvalidated** (the 4a
+  validators only enforce non-blank/single-line). Deliverability is the
+  future SMTP send-slice's concern; adding it here = scope creep +
+  duplicated logic. Deferred.
+- **`InvalidUploadTarget` → banner** (not the `vgm_number` field like
+  B6): conscious stage-based split (resolve-stage vs upload-stage),
+  ratified by the locked B9 spec. Residual UX tension (both mean "wrong
+  number"); routing it to the field for B6-consistency is a future
+  refinement.
+- **B12 4xx-vs-transient split:** `httpx.HTTPError` is too broad; 4xx
+  (esp. 401/403 = credentials/config) gets a non-retry-implying banner,
+  `RequestError`/5xx/other gets "nicht erreichbar … später erneut".
+- **`_split_errors` questions:** 4a short-circuits at the first bad
+  question → one entry today; `dict[int,str]` shape supports more if 4a
+  ever collects; a questions error with no parseable index falls back to
+  the `field_errors["questions"]` group slot (form.html) — not silent.
+
+### Surprises (process)
+
+- **Pre-handler layer was invisible to unit tests.** Every test posted
+  a complete body, so FastAPI's `Form(...)` validation (which runs
+  BEFORE the handler body, bypassing all B5–B13 try/except) was never
+  exercised — smoke caught raw 422/405 JSON. Fixed as B14/B15.
+- **Resolver O(N) latency invisible to unit tests.** `_FakeClient` has a
+  trivial doc-set so the scan exhausts instantly; only a timed live
+  smoke exposed the ~45s. → the BLOCKER above.
+- **Browser-keyboard defects invisible to TestClient:** Enter in a
+  question `<input>` submitted the whole form (fixed: delegated keydown
+  → add row); a slow scan with a static disabled button looked dead
+  (fixed: liveness spinner).
+- Test-as-contract cycles (B3, B4, B10, B11) passed with no impl change
+  — reported, not faked; B10's initial blanket `"<script>" not in body`
+  was a flawed assertion (template has first-party `<script>`) →
+  replaced with a first-party count invariant.
+
+### Future open-item (NOT this slice) — production hosting of `/r/`
+
+Deployment/ops slice, after the client loop is functionally complete
+(submit-slice). `web.app` (`/r/*`) is localhost-only today; magic links
+need a public host. Single-tenant deploy, real domain + TLS,
+`MAGIC_LINK_BASE_URL`=that domain, always-on, bind `0.0.0.0` +
+`--proxy-headers`. Only code touch: a healthcheck endpoint. Hardest
+sub-point: `MAGIC_LINK_SECRET` provisioning — every SB instance AND the
+hosted `/r/` must share the identical secret or SB-signed tokens fail
+verification (generic 404). Carries Slice-3 token-in-access-log (now ×
+proxy). Different slice character (no unit-RED for systemd/TLS; gates =
+external-device smoke) — discuss in its Step 0.
+
+### Files (added / changed) — staged, NOT committed (human checkpoint)
+
+- New: `src/belegmeister/sb/{__init__,app}.py`,
+  `src/belegmeister/sb/templates/{form,result}.html`,
+  `src/belegmeister/validation_errors.py`,
+  `tests/sb/{__init__,test_app,test_app_lifespan}.py`,
+  `tests/test_validation_errors.py`, `scripts/smoke_test_sb_form.py`.
+- Modified: `src/belegmeister/__main__.py` (rewired to shared
+  `validation_error_items`, behaviour-preserving), `pyproject.toml` +
+  `uv.lock` (`python-multipart`).
+
+Suggested commit message (for the human to run — see below):
+
+```
+feat(sb): SB request-creation web form (4b) — CODE COMPLETE, BLOCKED
+
+- belegmeister.sb.app: separate FastAPI app, GET /sb + POST /sb/create
+  reusing the 4a core; lifespan C1 mirror; Jinja2 autoescape
+- B1-B15: full failure ladder (form-shape / resolve / validate / upload
+  / local-FS / pre-handler), each a friendly 200 re-render, never 500
+- shared validation_errors.validation_error_items (CLI rewired,
+  byte-identical); python-multipart added
+- sb 26/26, full 165/165, ruff + mypy --strict clean
+- BLOCKED: resolver not-found ~45s (O(all-docs) scan) is not shippable;
+  next slice = resolver-perf spike-first. Not closed.
+```
