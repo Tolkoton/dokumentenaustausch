@@ -82,19 +82,4 @@ To inspect a hook: `cat .claude/hooks/<name>.sh`. To temporarily disable: rename
 <!-- project-specific guidance below this marker.       -->
 <!-- ============================================== -->
 
-## Coding conventions
-
-### Single source of truth for cross-layer logic
-
-Validation or business logic that applies at more than one layer (e.g.
-a Pydantic boundary model AND a domain codec) MUST be extracted into a
-shared function — one source of truth. Each layer MAY wrap the result
-with its own exception type (`ValidationError` at the API boundary,
-a domain error like `RequestLetterMalformed` in the codec), but the
-RULE itself lives in exactly one place. Duplicated validation logic
-across layers is a paranoid-SRP violation and a correctness hazard
-(the copies drift; one gets a fix the other doesn't).
-
-Concretely: prefer small pure predicates (`is_single_line(s) -> bool`,
-`has_sentinel_collision(s) -> bool`, `is_blank(s) -> bool`) that every
-layer calls, over re-implementing the check per layer.
+@AGENTS.md
