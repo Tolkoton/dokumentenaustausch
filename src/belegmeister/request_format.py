@@ -111,21 +111,55 @@ class RequestLetterMalformed(Exception):
 
 
 def is_single_line(value: str) -> bool:
-    """True iff `value` is one physical line. Catches \\n, \\r\\n AND
-    bare \\r (Windows SB box + copy-paste from old Mac / mangled
-    sources) — `\\n`/`\\r` membership covers all three."""
+    """Return ``True`` iff ``value`` contains no line break of any kind.
+
+    Catches LF (``\\n``), CRLF (``\\r\\n``), and bare CR (``\\r``); the
+    last matters because the SB runs on Windows and pastes from
+    heterogeneous sources (old Mac files, mangled email bodies). Testing
+    ``\\n`` and ``\\r`` membership separately covers all three with no
+    regex.
+
+    Args:
+        value: Candidate header-shaped string (already stripped or not —
+            caller's choice; this predicate is purely about line breaks).
+
+    Returns:
+        ``True`` if ``value`` is exactly one physical line, ``False``
+        otherwise.
+    """
     return "\n" not in value and "\r" not in value
 
 
 def has_sentinel_collision(value: str) -> bool:
-    """True iff any line of `value` (stripped) starts with the sentinel
-    prefix — such a line would let a crafted file misparse on the way
-    back through `parse_request_letter`."""
+    """Return ``True`` iff any line of ``value`` starts with the sentinel.
+
+    A line whose stripped form begins with ``SENTINEL_PREFIX``
+    (``==BELEGMEISTER==``) would, after a serialize → parse round-trip,
+    be interpreted as a request-letter marker (``request/v1`` / ``fragen``
+    / ``end``). Rejecting such input at the producer side keeps the wire
+    format unambiguous without the parser ever having to disambiguate.
+
+    Args:
+        value: Candidate body or question text. Any embedded newlines
+            are respected — each physical line is checked independently.
+
+    Returns:
+        ``True`` if at least one line, stripped of surrounding
+        whitespace, starts with the sentinel prefix; ``False`` if every
+        line is safe.
+    """
     return any(line.strip().startswith(SENTINEL_PREFIX) for line in value.split("\n"))
 
 
 def is_blank(value: str) -> bool:
-    """True iff `value` is empty or whitespace-only."""
+    """Return ``True`` iff ``value`` is empty or whitespace-only.
+
+    Args:
+        value: Candidate string.
+
+    Returns:
+        ``True`` if ``value.strip()`` is empty, ``False`` otherwise.
+    """
     return value.strip() == ""
 
 
@@ -163,10 +197,48 @@ def _reject_empty_body(value: str) -> None:
 
 
 def serialize_request_letter(letter: RequestLetter) -> str:
-    """RequestLetter -> wire text. Raises RequestLetterMalformed if the
-    value object carries a sentinel-colliding line, a header newline, or
-    an empty body (defense in depth; the form should have rejected it
-    first). Flow: validate -> assemble."""
+    """Serialize a ``RequestLetter`` into the on-wire ``request/v1`` text.
+
+    Defense-in-depth: the caller (``CreateRequestArgs`` validators in
+    ``belegmeister.cli.create_request``) already enforces the same rules
+    via the shared predicates above. The codec re-checks because it owns
+    its own integrity — anyone constructing a ``RequestLetter`` directly
+    (a future test, a future caller) must not be able to produce
+    text that ``parse_request_letter`` would refuse, or text that would
+    silently mis-round-trip. Flow: validate → assemble.
+
+    Args:
+        letter: A constructed value object. The codec assumes ``letter``
+            type-checked but trusts no field values.
+
+    Returns:
+        The complete file content as a single ``str`` ending in ``"\\n"``
+        (one canonical line-ending; the wire is LF-only regardless of
+        the producer's platform). Layout:
+
+        ::
+
+            ==BELEGMEISTER== request/v1
+            To: <to>
+            Cc: <cc>
+            Subject: <subject>
+
+            <body verbatim, multi-line allowed>
+            ==BELEGMEISTER== fragen
+            <question 1>
+            <question 2>
+            ==BELEGMEISTER== end
+
+    Raises:
+        RequestLetterMalformed: With ``reason`` describing the first
+            structural violation found. Specifically:
+
+            * ``"<field> must be a single line …"`` for ``to`` / ``cc``
+              / ``subject`` carrying a ``\\n`` or ``\\r``.
+            * ``"body is empty or whitespace-only"`` for a blank body.
+            * ``"body contains a line starting with '==BELEGMEISTER=='"``
+              when the body would inject a marker.
+    """
     _reject_header_newline("to", letter.to)
     _reject_header_newline("cc", letter.cc)
     _reject_header_newline("subject", letter.subject)
@@ -247,8 +319,50 @@ def _verify_marker_order(lines: list[str]) -> tuple[int, int, int]:
 
 
 def parse_request_letter(text: str) -> RequestLetter:
-    """Wire text -> RequestLetter. Inverse of serialize_request_letter.
-    Raises RequestLetterMalformed on any structural defect."""
+    """Parse ``request/v1`` wire text into a ``RequestLetter``.
+
+    The exact inverse of ``serialize_request_letter``: the property
+    ``parse(serialize(x)) == x`` is the codec's correctness test. The
+    parser is a hostile input path — it consumes whatever bytes the VGM
+    currently holds, which may include a manually edited file, a future
+    version, or an attacker-supplied document. Every structural defect
+    becomes a single, self-describing ``RequestLetterMalformed``; bare
+    ``ValueError`` / ``IndexError`` must never leak (each is intercepted
+    by an explicit guard before it can be raised).
+
+    Args:
+        text: The raw file content as decoded UTF-8 ``str``. A single
+            trailing newline (the canonical end-of-file) is dropped
+            before parsing so the round-trip is byte-exact.
+
+    Returns:
+        A ``RequestLetter`` whose values are taken verbatim from the
+        wire (``to`` / ``cc`` / ``subject`` from header lines, ``body``
+        between the blank-line separator and the ``fragen`` marker,
+        ``questions`` as a tuple of non-empty lines between ``fragen``
+        and ``end``).
+
+    Raises:
+        RequestLetterMalformed: With one of the following ``reason``
+            strings, in the order the parser checks them:
+
+            * ``"missing or unrecognizable version marker"`` — first
+              line is empty, garbled, or not a sentinel form (no version
+              token is echoed when the line is hostile garbage).
+            * ``"unknown version: <token>"`` — first line is a valid
+              sentinel with a sane (alnum+slash, ≤20 chars) version
+              token, but it is not ``request/v1``. The token is echoed
+              because it has been proven safe.
+            * ``"<name> marker must appear exactly once (found N)"`` —
+              the ``fragen`` or ``end`` markers appear zero or multiple
+              times.
+            * ``"missing header/body separator (blank line)"`` — no
+              blank line between headers and body.
+            * ``"header/body separator must precede the fragen marker"``
+              / ``"end marker must come after the fragen marker …"`` —
+              markers appear in the wrong order.
+            * ``"duplicate header: <Key>"`` — a header line repeats.
+    """
     lines = text.split("\n")
     if lines and lines[-1] == "":
         lines = lines[:-1]  # drop the trailing-newline artifact

@@ -27,7 +27,36 @@ class KlardatenClient:
     timeout: float = 30.0
 
     def get_document(self, guid: str) -> dict[str, Any]:
-        """GET /datevconnect/dms/v2/documents/{guid}."""
+        """Fetch a single document record from DATEV DMS by GUID.
+
+        Wire call: ``GET /datevconnect/dms/v2/documents/{guid}`` against
+        the klardaten gateway. Used by ``belegmeister.datev.upload`` to
+        confirm a target is a Vorgangsmappe (``is_binder`` /
+        ``extension`` fields) before sending any bytes.
+
+        Args:
+            guid: The document's klardaten GUID. Embedded directly in
+                the URL path; the caller is responsible for providing a
+                trusted value (typically from a prior
+                ``list_documents`` call or
+                ``resolve_binder_guid_by_number``).
+
+        Returns:
+            The decoded JSON object as a ``dict``. Fields of interest
+            for the DMS v2 schema include ``is_binder`` (bool),
+            ``extension`` (``"VGM"`` for a Vorgangsmappe), ``number``
+            (the UI Dokumentnummer), and the various ``folder`` /
+            ``register`` references.
+
+        Raises:
+            httpx.HTTPStatusError: Non-2xx response (404 commonly means
+                "GUID unknown", 401/403 means auth/profile problem).
+            httpx.DecodingError: Body parsed as JSON but was not a JSON
+                object — should not happen against the real endpoint;
+                guards against a misrouted proxy.
+            httpx.HTTPError: Other transport-level errors (timeout,
+                connection refused).
+        """
         url = f"{self.base_url.rstrip('/')}/datevconnect/dms/v2/documents/{guid}"
         with httpx.Client(timeout=self.timeout) as client:
             response = client.get(url, headers=self._auth_headers())
@@ -41,7 +70,38 @@ class KlardatenClient:
         return cast(dict[str, Any], data)
 
     def list_documents(self, *, top: int = 1000, skip: int = 0) -> list[dict[str, Any]]:
-        """GET /datevconnect/dms/v2/documents with simple paging."""
+        """List documents from DATEV DMS, one page at a time.
+
+        Wire call: ``GET /datevconnect/dms/v2/documents`` with
+        ``$top`` and ``$skip`` query params. The implementation is one
+        HTTP call's worth of responsibility; pagination orchestration
+        lives in ``belegmeister.datev.resolver.resolve_binder_guid_by_number``
+        because looping is the resolver's concern, not the client's.
+
+        klardaten quirk (ADR-0001): the server **ignores ``$top``** —
+        every page returns 1000 entries regardless of the requested
+        value. Only ``$skip`` paginates. Also: there is no server-side
+        filter; this endpoint cannot narrow results by ``number`` or
+        any other field.
+
+        Args:
+            top: ``$top`` query parameter. Currently a no-op
+                server-side; kept so a future server change can be
+                exercised without a signature break.
+            skip: ``$skip`` query parameter; advances the window by
+                ``skip`` records.
+
+        Returns:
+            The page as a ``list`` of document records (each a
+            ``dict``, schema per ``get_document``). An empty list means
+            the listing is exhausted at that ``$skip``.
+
+        Raises:
+            httpx.HTTPStatusError: Non-2xx response.
+            httpx.DecodingError: Body was not a JSON array — points to
+                a proxy / gateway misroute.
+            httpx.HTTPError: Other transport-level errors.
+        """
         url = f"{self.base_url.rstrip('/')}/datevconnect/dms/v2/documents"
         with httpx.Client(timeout=self.timeout) as client:
             response = client.get(
@@ -60,7 +120,53 @@ class KlardatenClient:
     def attach_file_to_binder(
         self, *, binder_guid: str, file_name: str, file_bytes: bytes
     ) -> dict[str, Any]:
-        """Flow: POST bytes → POST structure-item under the binder."""
+        """Attach raw bytes as a child file (structure-item) of a Vorgangsmappe.
+
+        Two-call DATEV DMS v2 flow, hidden behind one public method
+        because the seam is one logical operation:
+
+        1. ``POST /datevconnect/dms/v2/document-files`` with
+           ``Content-Type: application/octet-stream`` — uploads the raw
+           bytes and returns ``{"id": <int>}``. The returned id is
+           **single-shot**: reusing it on a second ``structure-items``
+           POST yields ``"document_file_id N is not available"``.
+        2. ``POST /datevconnect/dms/v2/documents/{binder_guid}/structure-items``
+           with the type=1 JSON body built by ``_build_structure_item``
+           (carrying ``document_file_id`` from step 1).
+
+        The caller (``belegmeister.datev.upload.upload_to_binder``) is
+        responsible for verifying the target is actually a Vorgangsmappe
+        before invoking this; the client does not re-check.
+
+        Args:
+            binder_guid: The Vorgangsmappe's GUID. Inserted into the
+                URL path of step 2; not validated here.
+            file_name: Display name for the attached file inside the
+                binder — what the SB / Mandant sees in DATEV's UI. The
+                request-letter slice uses
+                ``vgm_files.request_letter_filename`` to keep this
+                consistent with the reader.
+            file_bytes: The full file content. Sent in one POST body
+                (no chunking); large files become a single in-memory
+                buffer at the caller.
+
+        Returns:
+            The freshly-created structure-item record as returned by
+            step 2 (a ``dict``). Its ``id`` field (``str``) is the
+            handle the SB / DMS UI use to identify the attachment.
+
+        Raises:
+            httpx.HTTPStatusError: Any non-2xx from either POST.
+            httpx.DecodingError: Step 1's response did not match
+                ``{"id": ...}``, or step 2's response was not a JSON
+                object.
+            httpx.HTTPError: Transport errors during either call.
+
+        Side effects:
+            Two HTTP calls per invocation; both are non-idempotent at
+            the DATEV side. Re-running creates additional document-file
+            ids and structure-items.
+        """
         document_file_id = self._upload_file_bytes(file_bytes)
         return self._post_structure_item(
             binder_guid=binder_guid,
@@ -105,11 +211,34 @@ class KlardatenClient:
         return cast(dict[str, Any], data)
 
     def list_structure_items(self, binder_guid: str) -> list[dict[str, Any]]:
-        """GET /datevconnect/dms/v2/documents/{guid}/structure-items.
+        """List the children (files and sub-folders) of a Vorgangsmappe.
 
-        Returns the binder's children (type=1 files carry document_file_id
-        + size; type=2 are sub-folders). The binder doc itself (GET
-        /documents/{guid}) does NOT include these — separate sub-resource.
+        Wire call: ``GET /datevconnect/dms/v2/documents/{binder_guid}/structure-items``.
+        Children are a separate sub-resource — ``get_document`` on the
+        binder itself does NOT include them. The Mandant-facing magic-
+        link page uses this to find the newest
+        ``_request_letter_*.txt`` deposited in the binder.
+
+        Args:
+            binder_guid: The Vorgangsmappe's GUID. Inserted into the
+                URL path; not validated here.
+
+        Returns:
+            A ``list`` of structure-item ``dict``s. Each item carries:
+
+            * ``"type"`` — ``1`` for a file (``document_file_id`` +
+              ``size`` populated), ``2`` for a sub-folder.
+            * ``"name"`` — display name.
+            * ``"document_file_id"`` — the int handle to fetch bytes
+              via ``download_document_file`` (files only).
+            * Other DMS-v2 schema fields (``counter``, ``creation_date``,
+              etc.).
+
+        Raises:
+            httpx.HTTPStatusError: Non-2xx response (404 indicates the
+                binder GUID is unknown).
+            httpx.DecodingError: Body was not a JSON array.
+            httpx.HTTPError: Other transport-level errors.
         """
         url = (
             f"{self.base_url.rstrip('/')}"
@@ -126,11 +255,32 @@ class KlardatenClient:
         return cast(list[dict[str, Any]], data)
 
     def download_document_file(self, document_file_id: int) -> bytes:
-        """GET /datevconnect/dms/v2/document-files/{id} → raw bytes.
+        """Download the raw bytes of a DMS document-file by id.
 
-        DATEV mandates `Accept: application/octet-stream`; any other
-        Accept yields 400. Response has no content-length; the body is
-        the raw file (no JSON wrapper).
+        Wire call: ``GET /datevconnect/dms/v2/document-files/{id}``.
+        Used by ``belegmeister.web.request_view`` to fetch the body of
+        the request-letter the Mandant must read on the magic-link page.
+
+        DATEV-specific quirk: the endpoint **requires**
+        ``Accept: application/octet-stream``; sending the client's
+        default ``application/json`` yields a 400. The response body
+        is the raw file content with no JSON wrapper (and DATEV does
+        not always set ``Content-Length`` — the body is read in full).
+
+        Args:
+            document_file_id: The integer id obtained from a
+                structure-item's ``document_file_id`` field
+                (``list_structure_items``).
+
+        Returns:
+            The complete file content as ``bytes``. Decoding (typically
+            UTF-8 for request letters) is the caller's concern.
+
+        Raises:
+            httpx.HTTPStatusError: Non-2xx — 400 typically means the
+                ``Accept`` header was modified upstream; 404 means the
+                id is unknown.
+            httpx.HTTPError: Other transport-level errors.
         """
         url = (
             f"{self.base_url.rstrip('/')}"

@@ -67,10 +67,42 @@ class UploadFailed(Exception):
 
 
 class CreateRequestArgs(BaseModel):
-    """Validated CLI arguments.
+    """Validated arguments for a ``create-request`` invocation.
 
-    Constructed via `CreateRequestArgs.model_validate(data, context={"now": now})`
-    so `expires_at` can be checked against an injectable wall-clock.
+    The single Pydantic gate for both the CLI (``__main__``) and the SB
+    web form (``belegmeister.sb.app``). Field-level validators wrap the
+    shared predicates from ``belegmeister.request_format`` (``is_blank``,
+    ``is_single_line``, ``has_sentinel_collision``) so the SAME rule
+    decides for every caller — the codec layer then re-checks with its
+    own exception type (``RequestLetterMalformed``) for defense in depth.
+    See ``CLAUDE.md`` / ``AGENTS.md`` "Single source of truth for
+    cross-layer logic".
+
+    Must be constructed via
+    ``CreateRequestArgs.model_validate(data, context={"now": now})`` —
+    the ``expires_at`` validator reads ``now`` from the validation
+    context so tests can pin a deterministic clock; constructing
+    without that context raises ``ValueError`` from the validator.
+
+    Attributes:
+        vgm_id: The DATEV Vorgangsmappe GUID (NOT the UI
+            Dokumentnummer — the SB form resolves number → GUID before
+            constructing this).
+        to: Recipient email used as the ``To:`` header on the wire
+            letter. Stripped, must be a single line, must be non-blank.
+        cc: Optional Cc email. Stripped; empty allowed. If non-empty
+            it must be a single line.
+        subject: Email subject. Stripped, single line, non-blank.
+        body: Letter body. Kept verbatim — leading/trailing blank lines
+            and indentation are preserved on purpose. Must be non-blank
+            and must not contain a line starting with the request-marker
+            sentinel.
+        questions: Optional list of single-line questions for the
+            Mandant. Each question is stripped; blanks and sentinel
+            collisions raise ``ValueError``. Order is preserved.
+        expires_at: Magic-link hard expiry. Must be in the future of
+            the validation context's ``now`` AND within
+            ``MAX_TTL_DAYS`` (7) of it.
     """
 
     vgm_id: str = Field(min_length=1)
@@ -175,9 +207,75 @@ def run_create_request(
     magic_link_base_url: str,
     now: datetime,
 ) -> str:
-    """Orchestrate: upload letter file → generate token → compose URL.
+    """Orchestrate creating a document request and return the magic-link URL.
 
-    Returns the magic-link URL (caller prints to stdout).
+    The shared 4a "core" called by the CLI (``__main__._cmd_create_request``)
+    and the SB web form (``belegmeister.sb.app.create_request_page``).
+    Steps, in order:
+
+    1. Build the ISO-stamped letter filename via
+       ``vgm_files.request_letter_filename`` (single source of truth
+       shared with the magic-link page's reader filter).
+    2. Construct a ``RequestLetter`` from the validated args and
+       serialize it through ``request_format.serialize_request_letter``
+       (which re-checks header / body invariants).
+    3. Write the wire text to a tempfile inside a
+       ``TemporaryDirectory`` (auto-deleted on exit) and call
+       ``datev.upload.upload_to_binder``, which performs the two-call
+       klardaten attach (``POST /document-files`` → ``POST
+       /documents/{vgm_id}/structure-items``).
+    4. Mint an HMAC magic-link token via
+       ``magic_link.token.generate_token`` and compose
+       ``<base_url>/r/<token>``.
+
+    Args:
+        args: Already-validated ``CreateRequestArgs``. The caller is
+            responsible for ``model_validate(..., context={"now": now})``
+            — re-validating here would be redundant.
+        klardaten_client: Any ``BinderClient`` (in production a
+            ``KlardatenClient``; in tests a fake matching the
+            protocol).
+        magic_link_secret: The HMAC signing key. Validated upstream
+            (``env_validation.validate_secret``); this function does
+            not re-check.
+        magic_link_base_url: Public origin for ``/r/<token>`` URLs.
+            Trailing ``/`` is stripped during composition; the caller's
+            validator already enforced the ``https://`` /
+            ``http://localhost`` prefix rule.
+        now: The wall-clock used to stamp the letter filename. Same
+            value should appear in the validation context that produced
+            ``args``, so the filename and ``args.expires_at`` are
+            consistent.
+
+    Returns:
+        The complete magic-link URL ready to forward to the Mandant —
+        ``"<base_url>/r/<token>"``. Each invocation produces a fresh
+        token AND a fresh letter file inside the binder; re-running
+        does NOT replace the previous letter (each run is auditable).
+
+    Raises:
+        UploadFailed: The target VGM exists and is a Vorgangsmappe but
+            the byte transfer or server-side accept did not succeed
+            (HTTP 5xx, transport error, malformed response). Message
+            embeds ``vgm_id`` + ``reason``.
+
+        ``upload_to_binder`` may also propagate
+        ``datev.upload.InvalidUploadTarget`` (the binder is not a
+        Vorgangsmappe, or the GUID returns 404) — that exception is
+        raised here without modification.
+
+        ``serialize_request_letter`` may raise
+        ``request_format.RequestLetterMalformed`` if a header or body
+        slipped past the boundary (defense-in-depth; should not happen
+        when ``CreateRequestArgs`` was correctly validated).
+
+    Side effects:
+        * Writes a temporary file under the OS tempdir; the tempdir is
+          removed on return (success or failure).
+        * Makes one HTTP ``GET`` and (on a valid target) two HTTP
+          ``POST``s to the klardaten gateway, leaving a new
+          structure-item inside the binder on success.
+        * Computes one HMAC-SHA256 over the token payload bytes.
     """
     iso_now = now.astimezone(timezone.utc).strftime("%Y-%m-%dT%H%M%SZ")
     filename = request_letter_filename(iso_now)

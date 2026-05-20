@@ -402,6 +402,20 @@ async def _on_request_validation_error(
 
 @app.get("/sb", response_class=HTMLResponse)
 def form_page(request: Request) -> HTMLResponse:
+    """Render the empty request-creation form (GET ``/sb``).
+
+    First-touch route: every field is empty, no banners, HTTP 200.
+    All re-render branches in ``create_request_page`` share the same
+    template through ``_render_form`` so GET and re-render cannot
+    diverge in shape.
+
+    Args:
+        request: FastAPI request, used by Jinja2's template-response
+            machinery to expose ``request`` to the template.
+
+    Returns:
+        An HTML 200 response carrying the freshly-rendered ``form.html``.
+    """
     return _render_form(request, _EMPTY_FORM)
 
 
@@ -428,9 +442,73 @@ def create_request_page(
     base_url: str = Depends(get_base_url),
     now: datetime = Depends(get_now),
 ) -> HTMLResponse:
-    """Flow: collect form -> resolve VGM number -> validate args ->
-    run shared 4a core -> render result. Each failure stage gets its
-    own re-render branch (B5-B12); the happy path is here."""
+    """Handle ``POST /sb/create``: validate, resolve, run the 4a core, render.
+
+    Stage-by-stage flow, each with its own re-render branch (the B5–B12
+    behavior labels in ``tests/sb/``):
+
+    1. **Collect** the submission verbatim via ``_collect_form_input``
+       so re-renders preserve the SB's typing.
+    2. **Form-shape** parse: ``_parse_vgm_number`` rejects non-digit
+       VGM-Nummer with a ``FormValidationError`` (B5).
+    3. **Resolve** via ``resolve_binder_guid_by_number`` (klardaten
+       ``GET /documents`` pagination — see ADR-0001 for why this is
+       slow). ``VgmNotResolved`` (B6) and ``httpx.HTTPError``
+       (B11/B12, classified by ``_datev_resolve_banner``) get curated
+       banners. Note: a 4xx (auth/config) is shown as a NON-retry
+       message because retrying will not fix it.
+    4. **Validate** ``CreateRequestArgs`` against the resolved GUID
+       and the form's text fields, with the shared ``now`` in
+       validation context. Field-mapped errors render at their field
+       (``_split_errors`` routes the ``questions`` indices to the
+       offending row).
+    5. **Core**: ``run_create_request`` performs the klardaten attach
+       and returns the magic-link URL. ``InvalidUploadTarget`` and
+       ``UploadFailed`` (B9/B10) render distinct banners; an
+       ``OSError`` from the local tempfile path renders the
+       "Dateisystemfehler" banner (the only place ``OSError`` can
+       originate inside the core is the temp-file write).
+    6. **Render result**: ``_render_result`` shows the magic link as
+       copyable text — no email send; the SB copies the link by hand.
+
+    Args:
+        request: FastAPI request, threaded to the Jinja2 template
+            response.
+        vgm_number: Raw form field ``vgm_number`` (string, not yet
+            parsed). The Dokumentnummer the SB typed.
+        to: Recipient email form field.
+        cc: Optional Cc form field (defaults to empty).
+        subject: Subject line form field.
+        body: Letter body, verbatim.
+        questions: Zero or more question rows (FastAPI binds repeated
+            form fields to ``list[str]``). Empty trailing rows ARE
+            preserved through re-render — the SB chose to add them.
+        client: ``KlardatenClient`` (or test override). Used for both
+            resolve and core upload — the same instance, so a
+            connection pool can be shared.
+        secret: ``MAGIC_LINK_SECRET`` (validated at startup; injected
+            here for testability).
+        base_url: ``MAGIC_LINK_BASE_URL`` of the PUBLIC client handler
+            (the ``/r/<token>`` deploy) — the SB app composes links
+            the Mandant opens elsewhere.
+        now: Injectable wall-clock; pinned in tests.
+
+    Returns:
+        Always an HTML response, always HTTP 200. The happy path
+        renders ``result.html`` with the magic link; every failure
+        stage re-renders ``form.html`` with the preserved form values
+        plus a banner or per-field message. A friendly re-render NEVER
+        4xx-es; the page redisplays itself on bad input.
+
+    Side effects:
+        Network calls to klardaten via ``client`` during the resolve
+        stage (one or more ``GET /documents``) and the core stage (one
+        ``GET /documents/{guid}``, then two ``POST``s — see
+        ``run_create_request``). Writes a tempfile inside the OS
+        tempdir (auto-cleaned by the core). Emits structured ``WARNING``
+        log lines via ``belegmeister.sb`` for every failure branch (no
+        secrets, no token, no full URL).
+    """
     form = _collect_form_input(
         vgm_number=vgm_number,
         to=to,

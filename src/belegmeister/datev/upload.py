@@ -43,6 +43,25 @@ class InvalidUploadTarget(Exception):
 
 @dataclass(frozen=True)
 class UploadResult:
+    """Outcome of an ``upload_to_binder`` call.
+
+    A non-exception failure carrier for transient / business problems
+    where the caller still wants a structured value (HTTP 5xx, transport
+    error, unexpected response shape). Exception-worthy programmer or
+    operator errors — file missing, target is not a Vorgangsmappe — are
+    raised via ``InvalidUploadTarget`` and do NOT come back here.
+
+    Attributes:
+        success: ``True`` only when the file landed and DATEV returned
+            a usable structure-item id; ``False`` otherwise.
+        document_id: The freshly-created structure-item id (the handle
+            inside DATEV's DMS) on success; ``None`` on any failure.
+        error: A short human-readable failure description on
+            ``success=False``; ``None`` on success. Includes an HTTP
+            status (when one is available) and a truncated response
+            excerpt so operational logs are self-describing.
+    """
+
     success: bool
     document_id: str | None
     error: str | None
@@ -68,11 +87,60 @@ def upload_to_binder(
     binder_guid: str,
     klardaten_client: BinderClient,
 ) -> UploadResult:
-    """Validate the binder, then attach the file as a sub-document.
+    """Attach a local file as a child structure-item of a DATEV Vorgangsmappe.
 
-    Flow: validate file → fetch binder → ensure Vorgangsmappe → read bytes
-    → attach. Programmer/operator errors raise; HTTP/transport business
-    failures return an `UploadResult(success=False, …)`.
+    Performs, in order: existence/regular-file checks on ``file_path``;
+    a ``GET /datevconnect/dms/v2/documents/{guid}`` to fetch the
+    candidate target; the Vorgangsmappe predicate
+    (``is_binder is True`` AND ``extension == "VGM"``); then the
+    two-call attach (``POST /document-files`` for the bytes, then
+    ``POST /documents/{guid}/structure-items`` for the type=1
+    structure-item — both inside ``klardaten_client``). The full flow
+    is hidden behind one public method; the seam stays one method even
+    though the wire is two HTTP calls.
+
+    The boundary between "raises" and "returns ``UploadResult(success=
+    False)``" is deliberate: programmer/operator errors that cannot
+    succeed on retry (missing file, target is not a Vorgangsmappe,
+    binder 404) become exceptions; transient business/transport
+    failures stay structured so the SB / CLI can render a friendly
+    re-try banner without traceback dives.
+
+    Args:
+        file_path: Path to the file on the local filesystem. Must exist
+            and be a regular file. Read at most once (the binder fetch
+            happens BEFORE the read, so a non-Vorgangsmappe target
+            never touches the disk).
+        binder_guid: The target binder's GUID (NOT the UI-visible
+            Dokumentnummer — use
+            ``belegmeister.datev.resolver.resolve_binder_guid_by_number``
+            to translate first). Echoed verbatim into the URL path.
+        klardaten_client: Any value matching the ``BinderClient``
+            Protocol; in production a ``KlardatenClient`` instance, in
+            tests a fake with the same shape.
+
+    Returns:
+        ``UploadResult(success=True, document_id=<str>, error=None)``
+        on success, where ``document_id`` is the new structure-item's
+        ``id`` (string). On non-exception failure,
+        ``UploadResult(success=False, document_id=None, error=<str>)``
+        — see the ``UploadResult`` docstring for the message shape.
+
+    Raises:
+        InvalidUploadTarget: When the binder GET returns HTTP 404
+            (``reason="binder not found (HTTP 404)"``), or when the
+            fetched document is not a Vorgangsmappe
+            (``reason="not a Vorgangsmappe (is_binder=…, extension=…)"``).
+            The exception message carries both target id and reason so
+            a single operational log line is self-describing.
+
+    Side effects:
+        Makes one ``GET`` and (on a valid target) two ``POST`` HTTP
+        calls to the klardaten gateway via ``klardaten_client``. Reads
+        ``file_path``'s bytes into memory once. Does not retry on
+        transient failures (a 5xx becomes an ``UploadResult.error``).
+        Idempotency: re-running creates an additional structure-item
+        with a new id — by design, so re-sends are auditable.
     """
     if (err := _validate_inputs(file_path)) is not None:
         return UploadResult(success=False, document_id=None, error=err)

@@ -29,7 +29,29 @@ REQUEST_LETTER_SUFFIX = ".txt"
 
 
 def request_letter_filename(iso: str) -> str:
-    """Full request-letter filename for an ISO-8601 UTC stamp. Both the
-    writer and the reader's filter derive from this one place, so they
-    can never diverge."""
+    """Build the request-letter filename for a given ISO-8601 UTC stamp.
+
+    The single producer is
+    ``belegmeister.cli.create_request.run_create_request`` (writes the
+    file into the Vorgangsmappe via klardaten ``POST /document-files`` +
+    ``POST /documents/{binder}/structure-items``); the single consumer
+    is ``belegmeister.web.request_view._pick_newest_letter`` (filters
+    the VGM's children to find this slice's letter). Routing both
+    through this helper means a rename of the prefix or extension is a
+    one-line change with no risk of a writer/reader split.
+
+    Args:
+        iso: An ISO-8601 UTC timestamp string (the producer uses
+            ``"%Y-%m-%dT%H%M%SZ"`` to keep the filename portable across
+            Windows file systems — no colons). Passed through verbatim;
+            no validation here. A monotonic stamp gives lexicographic
+            sort = chronological sort, which is how the reader picks the
+            newest letter inside a binder.
+
+    Returns:
+        ``"_request_letter_<iso>.txt"`` — the full filename to write into
+        the VGM. ``.txt`` (not ``.md``) so the SB on Windows can open it
+        in Notepad with zero admin; the body is plain wire-format text
+        regardless of extension.
+    """
     return f"{REQUEST_LETTER_PREFIX}{iso}{REQUEST_LETTER_SUFFIX}"

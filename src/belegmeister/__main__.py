@@ -218,6 +218,45 @@ def _cmd_create_request(args: argparse.Namespace, env: _EnvConfig) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Run the `belegmeister` CLI: parse argv, validate env, dispatch.
+
+    Process-level entry point invoked by ``python -m belegmeister``. The
+    routine is deliberately ordered so ``--help`` / ``-h`` short-circuit
+    via ``SystemExit`` BEFORE any env validation runs — surfacing usage
+    must not be gated on a complete ``.env``. Env loading happens once,
+    after argparse, and a missing/weak value is rendered as a clean
+    ``error: …`` line on stderr (no traceback).
+
+    The subcommand dispatch is a humble switch: each branch delegates to
+    a ``_cmd_*`` helper whose logic is exercised by the
+    ``belegmeister.cli`` unit tests; this function exists only to wire
+    argparse → env → handler → exit code, and is intentionally not
+    asserted on in unit tests.
+
+    Args:
+        argv: Optional argv slice (without ``argv[0]``). ``None`` means
+            "use ``sys.argv[1:]``" — the standard argparse contract.
+            Tests pass an explicit list; the production entry path leaves
+            it ``None``.
+
+    Returns:
+        Process exit code. ``0`` on success; ``1`` on a user-facing error
+        (missing env var, malformed args, named domain exception such as
+        ``InvalidUploadTarget`` / ``UploadFailed`` / ``ValidationError``);
+        ``2`` for an unknown subcommand (unreachable while
+        ``add_subparsers(required=True)`` is in effect — kept defensive).
+        Unknown exceptions are NOT caught here and surface with their
+        full traceback — those are bugs.
+
+    Side effects:
+        * Reads environment variables (and ``.env`` via ``python-dotenv``)
+          through ``_load_env_config``.
+        * Writes ``error: …`` lines to ``sys.stderr`` for user-facing
+          errors; writes the magic-link URL to ``sys.stdout`` on success.
+        * May make HTTP calls to the klardaten gateway (POST to
+          ``/document-files`` and ``/documents/{binder}/structure-items``)
+          via ``run_create_request`` for the ``create-request`` command.
+    """
     # Argparse first so --help / -h short-circuit via SystemExit before
     # any env validation runs (env errors should not gate --help output).
     parser = _build_parser()

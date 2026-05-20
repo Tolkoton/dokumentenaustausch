@@ -69,9 +69,40 @@ class TokenPayload:
 
 
 def generate_token(*, vgm_id: str, expires_at: datetime, secret: str) -> str:
-    """Encode `{vgm_id, exp}` and sign with HMAC-SHA256.
+    """Mint a signed magic-link token binding a Mandant to one VGM.
 
-    Flow: build payload → encode → sign → join.
+    The returned string is the path segment in ``/r/<token>`` URLs.
+    Flow: build canonical JSON payload → base64url-encode → HMAC-SHA256
+    over the encoded payload bytes → base64url-encode the signature →
+    join with ``"."``. Signing the encoded payload (not the raw JSON)
+    means verifiers do not need to round-trip JSON to recompute the
+    signature.
+
+    Args:
+        vgm_id: The DATEV Vorgangsmappe GUID the link grants access to.
+            Embedded into the JSON payload verbatim. The caller is
+            responsible for using a real GUID (e.g. from
+            ``resolve_binder_guid_by_number`` then
+            ``upload_to_binder``).
+        expires_at: Hard expiry, in any timezone. Truncated to integer
+            unix seconds (``int(expires_at.timestamp())``) inside the
+            payload; sub-second precision is intentionally lost so the
+            payload is stable across serializations. Callers enforce
+            their own TTL cap upstream (see
+            ``belegmeister.cli.create_request.MAX_TTL_DAYS``).
+        secret: HMAC key, encoded to UTF-8 bytes. Callers must have
+            validated this via
+            ``belegmeister.env_validation.validate_secret`` (≥32 bytes)
+            BEFORE getting here; this function does not re-check.
+
+    Returns:
+        The token as ``"<payload_b64url>.<sig_b64url>"``. Both halves
+        use URL-safe base64 with ``=`` padding stripped — safe to embed
+        in a URL path segment without further escaping.
+
+    Side effects:
+        None. Pure function over its arguments; deterministic for fixed
+        ``(vgm_id, expires_at, secret)``.
     """
     payload_b64 = _encode_payload(vgm_id=vgm_id, exp=int(expires_at.timestamp()))
     sig_b64 = _b64url_encode(_compute_sig(payload_b64=payload_b64, secret=secret))
@@ -79,7 +110,49 @@ def generate_token(*, vgm_id: str, expires_at: datetime, secret: str) -> str:
 
 
 def verify_token(*, token: str, secret: str, now: datetime) -> TokenPayload:
-    """Flow: split → verify signature → decode payload → check expiry."""
+    """Verify a magic-link token and return its decoded payload.
+
+    Flow: split on ``"."`` → constant-time HMAC compare → base64url-
+    decode the payload → JSON-decode → check ``exp`` against ``now``.
+    Signature verification runs BEFORE payload decoding so that any
+    structural defect in an unsigned-or-tampered token (corrupt JSON,
+    missing fields, wrong types) cannot leak information about the
+    payload's contents through a different error path.
+
+    Args:
+        token: The token string from the URL path segment in
+            ``/r/<token>``. Trailing/leading whitespace and embedded
+            slashes are NOT trimmed — the caller (the FastAPI route)
+            already constrains the path-param shape.
+        secret: HMAC key, must be the same one used by
+            ``generate_token``. Validated for length upstream.
+        now: Reference wall-clock for the expiry check. Passed in
+            (rather than read from ``datetime.now``) so tests can pin a
+            deterministic time.
+
+    Returns:
+        The decoded ``TokenPayload`` (``vgm_id`` ``str``, ``exp`` unix
+        seconds ``int``) when every check passes.
+
+    Raises:
+        InvalidToken: Always with a typed ``reason``. The token string
+            itself is NEVER included in the exception (or in any log
+            message the route emits) — including it would leak a
+            still-valid credential into tracebacks and aggregator logs.
+            ``reason`` values, in the order they are checked:
+
+            * ``InvalidTokenReason.MALFORMED`` — wrong number of dots,
+              empty halves, non-base64url characters in either half,
+              payload is not valid JSON / not a JSON object, or
+              ``vgm_id`` / ``exp`` is missing or the wrong type.
+            * ``InvalidTokenReason.BAD_SIGNATURE`` — both halves are
+              well-formed but HMAC compare fails (forged or
+              wrong-secret token). Free tamper-detection signal — log
+              maps this to ``log_reason="token_bad_signature"`` (see
+              ``docs/SECURITY.md``).
+            * ``InvalidTokenReason.EXPIRED`` — signature is valid but
+              ``now`` is at or past the payload's ``exp``.
+    """
     payload_b64, sig_b64 = _split_token(token)
     _verify_signature(payload_b64=payload_b64, sig_b64=sig_b64, secret=secret)
     payload = _decode_payload(payload_b64)

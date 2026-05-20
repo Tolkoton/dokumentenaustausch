@@ -77,6 +77,25 @@ class RequestLinkInvalid(Exception):
 
 @dataclass(frozen=True)
 class RequestView:
+    """The data a Mandant's magic-link page needs to render.
+
+    Produced by ``resolve_request_view`` after the token is verified
+    and the corresponding request letter has been fetched from DATEV.
+    Carries no token (the route holds that separately) and no transport
+    metadata — just what the template renders.
+
+    Attributes:
+        vgm_id: The VGM (Vorgangsmappe) GUID the token bound to.
+            Useful for the template and for log correlation; not shown
+            to the Mandant.
+        letter_filename: The selected letter's filename inside the VGM
+            (``_request_letter_<iso>.txt``); informational, used for
+            debugging / smoke output rather than display.
+        letter_text: The decoded UTF-8 content of the letter file.
+            This is the wire-format ``request/v1`` body the template
+            renders to the Mandant.
+    """
+
     vgm_id: str
     letter_filename: str
     letter_text: str
@@ -103,9 +122,65 @@ def resolve_request_view(
     secret: str,
     now: datetime,
 ) -> RequestView:
-    """Flow: verify token → list children → pick newest letter → download
-    + decode. Any failure → generic RequestLinkInvalid (cause in
-    .log_reason)."""
+    """Verify a magic-link token and load the request letter it points at.
+
+    The core logic behind ``GET /r/{token}``. Steps:
+
+    1. ``verify_token`` (``belegmeister.magic_link.token``) — HMAC
+       check + expiry. Each ``InvalidTokenReason`` maps to a distinct
+       server-side ``log_reason`` (``token_expired``,
+       ``token_bad_signature``, ``token_malformed``) so a spike of
+       ``token_bad_signature`` surfaces as a tamper signal. The client
+       still sees the same generic 404 regardless of which reason
+       fired.
+    2. ``letter_source.list_structure_items(vgm_id)`` — klardaten
+       ``GET /datevconnect/dms/v2/documents/{vgm}/structure-items``.
+       A 404 here means the VGM id baked into the (verified!) token
+       no longer exists in DATEV — extremely unlikely under normal
+       use; logged as ``vgm_not_found``.
+    3. Pick the lexicographically-largest child whose name matches
+       ``_request_letter_*.txt``. The producer
+       (``cli.create_request.run_create_request``) writes
+       ISO-stamped names, so newest-by-name = newest-in-time. If no
+       letter is found, ``log_reason="letter_missing"``.
+    4. ``letter_source.download_document_file(int(file_id))`` —
+       klardaten ``GET /document-files/{id}``; decoded as UTF-8.
+       Errors map to ``download_failed`` (transport) or
+       ``letter_not_utf8`` (bytes are not valid UTF-8).
+
+    All failures collapse into a single ``RequestLinkInvalid`` whose
+    ``log_reason`` and ``log_context`` carry the cause for server-side
+    structured logging. The token string is NEVER added to
+    ``log_context``.
+
+    Args:
+        token: Raw token from the URL path. Opaque to this function.
+        letter_source: ``LetterSource``-shaped object — a
+            ``KlardatenClient`` in production, a fake in tests.
+        secret: HMAC key. Caller has validated length upstream.
+        now: Reference wall-clock for expiry. Injected for
+            deterministic tests.
+
+    Returns:
+        A ``RequestView`` carrying the verified ``vgm_id``, the chosen
+        ``letter_filename``, and the decoded ``letter_text``.
+
+    Raises:
+        RequestLinkInvalid: With one of the canonical ``log_reason``
+            values documented on the exception class
+            (``token_expired``, ``token_bad_signature``,
+            ``token_malformed``, ``vgm_not_found``, ``datev_error``,
+            ``letter_missing``, ``download_failed``, ``letter_not_utf8``).
+            Includes a ``log_context`` ``dict`` where applicable —
+            typically ``{"vgm_id": ...}`` and, for HTTP errors, the
+            status code.
+
+    Side effects:
+        Up to two HTTP requests to klardaten via ``letter_source`` on
+        the happy path. No local I/O, no log emission (the route layer
+        owns logging so the token never leaves this function with
+        free-text context).
+    """
     vgm_id = _verify(token, secret=secret, now=now)
     children = _list_children(vgm_id, letter_source)
     item = _pick_newest_letter(children, vgm_id=vgm_id)

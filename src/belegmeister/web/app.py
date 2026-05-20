@@ -113,6 +113,43 @@ def request_page(
     secret: str = Depends(get_secret),
     now: datetime = Depends(get_now),
 ) -> HTMLResponse:
+    """Handle ``GET /r/{token}``: render the Mandant's request letter.
+
+    Humble wiring around ``resolve_request_view``: verify the HMAC
+    token, fetch the newest ``_request_letter_*.txt`` from inside the
+    bound VGM via klardaten's ``GET /documents/{vgm}/structure-items``
+    and ``GET /document-files/{id}``, render ``request.html``. Any
+    failure becomes the GENERIC ``invalid.html`` page at HTTP 404 — the
+    client never sees which step failed (information-disclosure risk;
+    see ``docs/SECURITY.md``). The real reason is in the server log
+    with a structured ``log_reason`` + ``log_context`` (token never in
+    the log line).
+
+    Args:
+        token: The signed magic-link token from the URL path. Treated
+            as opaque; never logged or echoed.
+        request: FastAPI request, for the Jinja2 response.
+        letter_source: A ``LetterSource``-shaped object — in production
+            a ``KlardatenClient``; in tests a fake. Used for both
+            ``list_structure_items`` and ``download_document_file``.
+        secret: ``MAGIC_LINK_SECRET``, validated at startup.
+        now: Injectable wall-clock for expiry checks.
+
+    Returns:
+        Either:
+
+        * ``request.html`` at HTTP 200 with ``{"token": token,
+          "letter_text": <utf-8 string>}`` on the happy path, OR
+        * ``invalid.html`` at HTTP 404 on any failure
+          (``RequestLinkInvalid``). The client-facing message is the
+          same regardless of which stage failed.
+
+    Side effects:
+        Reads from klardaten via ``letter_source`` (two calls on the
+        happy path: list children, then download bytes). Emits one
+        ``WARNING`` log line on rejection with ``log_reason`` and
+        ``log_context`` from ``RequestLinkInvalid`` — never the token.
+    """
     try:
         view = resolve_request_view(
             token, letter_source=letter_source, secret=secret, now=now
