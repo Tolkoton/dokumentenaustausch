@@ -21,6 +21,19 @@ Categories follow Trajectory-Informed Memory Generation (arXiv 2603.10600):
 
 ---
 
+## 2026-05-21T10:15:17Z — resolver-perf — N_RATIFIED
+- Trigger: Step 0 hard blocker (Phase 2 OPEN closure)
+- Evidence: .overseer/slice/resolver-perf.md §Open items
+- Action: N=60 min ratified by owner. Rationale: dominant pain point is not-found latency (45s baseline → ≤50ms target via SQLite point-lookup), staleness window broadly acceptable (1h per owner workflow with DATEV→SB).
+- Category: strategy
+
+
+## 2026-05-21T10:03:23Z — resolver-perf — PLANNING_COMPLETE
+- Trigger: /plan-slice command (planning closure, not the 12-check Stop-hook)
+- Evidence: `.overseer/slice/resolver-perf.md` (written this turn, 11 sections, 5-phase conversation with 18 push-backs across phases — Phase 1: 4 PBs, Phase 2: 7 PBs + PB-final, Phase 3: 2 BLOCKERs + 1 last-call probe (Seam 6→2b), Phase 4: 4 BLOCKERs + scope + polish, Phase 5: PASS); coexists with ADR-0001 (architecture) by deferring Q1/Q2/Q3 directions to it while owning test design, exit chain, and deferrals.
+- Action: Planning artifact written with 12 Decisions (Q1, Q2, Q3, Q4, Q5, Q-error, Q-threshold, Q-build-log, Q-journal, Q-sentinel, Q-cleanup, Q-test-seam) + Q-render contract addendum. 5 hardest seams named with anti-patterns (serial-concurrency-illusion, single-substring-assertion-gap + substring-only-freshness, instant-mock-build-illusion, regex-matches-anything-numeric, happy-path-refresh-illusion). Seam 2 split into 2a (cold-start vs miss routing) + 2b (built_at arithmetic). Exit criterion = 11-step ordered chain (Step 0 = owner ratify N hard-blocker; Step 1 = CI matrix ubuntu+windows; Step 5.5 = direct-SQLite MISS pre-verify; Step 9 = stage+STOP per autonomy boundary; Step 10 = single owner commit). Phase 5 inventory: 5 Deferred (D-i metrics, D-ii manual-rebuild, D-iii 4c-splash, D-iv structured-emission, D-v very-stale-unit-switch; each with trigger + negative bound) + 4 Considered-and-dropped (X-i schema-migration, X-ii cross-process, X-iii disk-pressure, X-iv gerade-aktualisiert). 1 Open: N (refresh interval) PENDING OWNER, recommendation N=30. Q-error retrofitted mid-Phase-3 per PB-S2 (broaden catch from httpx-only to Exception with 3-tier severity). Q-sentinel pair chosen: (а1)+(б2) full migration of VgmNotResolved to datev/exceptions.py + new VgmIndexNotReady subclass + resolver raises both.
+- Category: strategy
+
 ## 2026-05-20T15:33:55Z — overseer-v1-5-validation — PLANNING_COMPLETE_PENDING_AUDIT
 - Trigger: /plan-slice command (planning closure, not the 12-check Stop-hook)
 - Evidence: `.overseer/slice/overseer-v1-5-validation.md` (written this turn, 11 sections, 5-phase conversation); 6 Revisions entries, 6/6 surviving Seam-2 implementer-difference audit (0 tagged non-material); 0 Defended pushbacks (emptiness auditable, not papered over).
