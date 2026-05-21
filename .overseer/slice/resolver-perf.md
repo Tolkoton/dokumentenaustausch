@@ -984,7 +984,9 @@ bound. Negative bound prevents "will-revisit-someday" drift.
 
 ## Open items requiring human decision
 
-**Owner ratification (2026-05-21)**: N=60 min. Rationale: dominant pain point is not-found latency (45s baseline → ≤50ms target), staleness window relaxed (1 hour acceptable per owner workflow with DATEV→SB timing).
+**Owner ratification (2026-05-21, current)**: **N=30 min**. Rationale on amendment: 60 min staleness window deemed too long on reconsideration — no business reason justifies the additional 30 min between DATEV change and SB visibility. N=30 is the middle-ground recommendation from PB7.
+
+**Prior ratification (superseded, 2026-05-21T10:15:17Z)**: N=60 min. Original rationale: dominant pain point is not-found latency (45s baseline → ≤50ms target), staleness window relaxed (1 hour acceptable per owner workflow with DATEV→SB timing). Superseded by owner amendment ~15 min later — see ledger entry `N_AMENDED` at 2026-05-21T10:18:50Z.
 
 - **Source:** Phase 2 OPEN, reframed per PB7.
 - **Question:** ADR-0001 Q1 states "biased long" — what value of N?

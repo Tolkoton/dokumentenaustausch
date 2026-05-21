@@ -21,6 +21,12 @@ Categories follow Trajectory-Informed Memory Generation (arXiv 2603.10600):
 
 ---
 
+## 2026-05-21T10:18:50Z — resolver-perf — N_AMENDED
+- Trigger: Owner amendment of prior N=60 ratification (10:15:17Z, ~15 min ago)
+- Evidence: .overseer/slice/resolver-perf.md §Open items (current ratification block + superseded block)
+- Action: N amended 60 → 30 min. Owner-stated reason: 60 min staleness window too long on reconsideration; no business reason justifies 30 extra min between DATEV change and SB visibility. N=30 supersedes N=60. Step 0 of Exit criterion remains unblocked (N is ratified, just at the new value).
+- Category: recovery
+
 ## 2026-05-21T10:15:17Z — resolver-perf — N_RATIFIED
 - Trigger: Step 0 hard blocker (Phase 2 OPEN closure)
 - Evidence: .overseer/slice/resolver-perf.md §Open items
