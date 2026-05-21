@@ -163,6 +163,35 @@ def is_blank(value: str) -> bool:
     return value.strip() == ""
 
 
+def is_email_like(value: str) -> bool:
+    """Return ``True`` iff ``value`` is plausibly a single email address.
+
+    Catches obvious typos and pasted noise (``"assaas"``, ``"foo@bar"``,
+    ``"foo @bar.de"``) without claiming RFC 5322 compliance — full
+    validation is the SMTP-send slice's job. The rule:
+
+    - exactly one ``"@"``;
+    - the local part is non-empty;
+    - the domain part is non-empty, contains at least one ``"."``, and
+      has non-empty labels on each side of every ``"."``;
+    - no whitespace anywhere.
+
+    Single-address only — comma-separated lists are rejected (the
+    surrounding form treats ``to`` and ``cc`` as single recipients in
+    V1).
+    """
+    if any(c.isspace() for c in value):
+        return False
+    if value.count("@") != 1:
+        return False
+    local, _, domain = value.partition("@")
+    if not local or not domain:
+        return False
+    if "." not in domain:
+        return False
+    return all(part for part in domain.split("."))
+
+
 def _reject_sentinel_collision(field: str, value: str) -> None:
     """Codec guard wrapping `has_sentinel_collision`.
 

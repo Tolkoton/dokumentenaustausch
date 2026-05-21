@@ -338,6 +338,71 @@ def test_B7_blank_subject_rerenders_form_with_field_message_no_core() -> None:
     assert p1 != -1 and p2 != -1 and p1 < p2
 
 
+@pytest.mark.parametrize(
+    "bad_to",
+    ["assaas", "foo@bar", "foo @bar.de", "@bar.de", "foo@"],
+    ids=["no-at", "no-dot-in-domain", "whitespace", "empty-local", "empty-domain"],
+)
+def test_B7b_invalid_email_in_to_rerenders_form_with_field_message_no_core(
+    bad_to: str,
+) -> None:
+    """`to` accepts only a single email-shaped address. Junk paste like
+    'assaas' must be a field-targeted re-render at 200, not a 500 or a
+    silently-accepted bad recipient handed to the SMTP-send slice later."""
+    fake = _FakeClient()
+    client = _client(fake)
+
+    r = client.post(
+        "/sb/create",
+        data={
+            "vgm_number": "395357",
+            "to": bad_to,
+            "cc": "kanzlei@example.com",
+            "subject": "Belegnachforderung",
+            "body": "Sehr geehrte Frau Müller,\n\nbitte Belege.",
+            "questions": ["Fahrtkosten 2026?"],
+        },
+    )
+
+    assert r.status_code == 200
+    body = r.text
+    assert 'action="/sb/create"' in body
+    # core never reached — the field validator runs before upload
+    assert fake.attached is None
+    # the 4a validator's own message, surfaced on the form
+    assert "Bitte eine korrekte E-Mail-Adresse eingeben." in body
+    # the bad value is echoed back (preserve what the SB typed; B14-style)
+    assert bad_to in body
+    # other scalars survive too
+    assert "kanzlei@example.com" in body
+    assert "Belegnachforderung" in body
+
+
+def test_B7c_invalid_email_in_cc_rerenders_form_no_core() -> None:
+    """Non-empty `cc` is also email-checked. Empty cc stays accepted
+    (verified by B2's happy path with cc='kanzlei@example.com'; the
+    empty-cc accepted path is exercised by B3-style tests upstream)."""
+    fake = _FakeClient()
+    client = _client(fake)
+
+    r = client.post(
+        "/sb/create",
+        data={
+            "vgm_number": "395357",
+            "to": "mandant@example.com",
+            "cc": "garbage-not-an-email",
+            "subject": "Belegnachforderung",
+            "body": "Sehr geehrte Frau Müller,\n\nbitte Belege.",
+            "questions": [],
+        },
+    )
+
+    assert r.status_code == 200
+    assert fake.attached is None
+    assert "Bitte eine korrekte E-Mail-Adresse eingeben." in r.text
+    assert "garbage-not-an-email" in r.text
+
+
 def test_B8_blank_question_rerenders_all_rows_with_error_at_that_row() -> None:
     fake = _FakeClient()
     client = _client(fake)
@@ -500,17 +565,24 @@ def test_B10_every_echoed_surface_is_html_escaped() -> None:
 
     # --- Leg B: B9 banner path (InvalidUploadTarget) ---
     # vgm_number must be numeric+resolvable to REACH the banner branch;
-    # all other fields carry <script> and must stay escaped while the
-    # curated banner is rendered
+    # to/cc must additionally PASS the email validator (B7b) to get past
+    # validation — so the XSS payload is wrapped into an email shape
+    # (<script>X</script>@x.de). Validator passes (no whitespace, one @,
+    # non-empty local, dotted domain); escape coverage on the to/cc
+    # surfaces stays.
     fake_b = _FakeClient(
         binder_doc={"is_binder": False, "extension": "X", "id": VGM_GUID}
     )
+
+    def email_payload(m: str) -> str:
+        return f"<script>{m}</script>@x.de"
+
     r_b = _client(fake_b).post(
         "/sb/create",
         data={
             "vgm_number": "395357",
-            "to": payload(TO),
-            "cc": payload(CC),
+            "to": email_payload(TO),
+            "cc": email_payload(CC),
             "subject": payload(SUB),
             "body": payload(BODY),
             "questions": [payload(Q1), payload(Q2)],

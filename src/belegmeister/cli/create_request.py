@@ -28,6 +28,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from pydantic import BaseModel, Field, ValidationInfo, field_validator
+from pydantic_core import PydanticCustomError
 
 from belegmeister.datev.upload import BinderClient, upload_to_binder
 from belegmeister.magic_link.token import generate_token
@@ -35,6 +36,7 @@ from belegmeister.request_format import (
     RequestLetter,
     has_sentinel_collision,
     is_blank,
+    is_email_like,
     is_single_line,
     serialize_request_letter,
 )
@@ -46,6 +48,12 @@ from belegmeister.vgm_files import request_letter_filename
 # radius. Compared as `total_seconds()`, not `.days`, so a 7-day-and-one-
 # second TTL is rejected (floor-to-days would silently extend lifetime).
 MAX_TTL_DAYS = 7
+
+# User-facing message for a malformed email in `to` / `cc`. Raised via
+# `PydanticCustomError` (NOT `ValueError`) so Pydantic does not prepend
+# the "Value error, " envelope to a message that reaches an end user.
+# One source of truth between the `to` and `cc` validators.
+_EMAIL_FORMAT_MSG = "Bitte eine korrekte E-Mail-Adresse eingeben."
 
 
 class UploadFailed(Exception):
@@ -118,7 +126,7 @@ class CreateRequestArgs(BaseModel):
     # _reject_* helpers wrap the SAME predicates and raise
     # RequestLetterMalformed. See CLAUDE.md "Single source of truth".
 
-    @field_validator("to", "subject")
+    @field_validator("subject")
     @classmethod
     def _required_single_line_header(cls, v: str) -> str:
         # Strip: leading/trailing whitespace on a header is meaningless
@@ -131,12 +139,28 @@ class CreateRequestArgs(BaseModel):
             raise ValueError("must be a single line (no newline / CR)")
         return stripped
 
+    @field_validator("to")
+    @classmethod
+    def _required_email_to(cls, v: str) -> str:
+        stripped = v.strip()
+        if is_blank(stripped):
+            raise ValueError("must not be blank")
+        if not is_single_line(stripped):
+            raise ValueError("must be a single line (no newline / CR)")
+        if not is_email_like(stripped):
+            raise PydanticCustomError("email_format", _EMAIL_FORMAT_MSG)
+        return stripped
+
     @field_validator("cc")
     @classmethod
     def _optional_single_line_cc(cls, v: str) -> str:
         stripped = v.strip()
-        if stripped and not is_single_line(stripped):
+        if not stripped:
+            return stripped
+        if not is_single_line(stripped):
             raise ValueError("must be a single line (no newline / CR)")
+        if not is_email_like(stripped):
+            raise PydanticCustomError("email_format", _EMAIL_FORMAT_MSG)
         return stripped
 
     @field_validator("body")
