@@ -25,7 +25,7 @@ def resolve_binder_guid_by_number(
     number: int,
     *,
     page_size: int = 1000,
-    max_pages: int = 50,
+    max_pages: int = 3,
 ) -> str | None:
     """Resolve a DATEV Dokumentnummer (UI integer) to a klardaten document GUID.
 
@@ -40,11 +40,17 @@ def resolve_binder_guid_by_number(
     ``scripts/spike_direct_lookup_2026-05-19.py``; do not re-probe.
 
     Worst-case behavior follows directly: a not-found result requires
-    walking ``page_size * max_pages`` records sequentially (~45 s and
-    growing on production data, per ADR-0001). The slice-4b form
-    surfaces this via the "VGM-Nummer nicht gefunden" message; a
-    persisted SQLite index will replace this function entirely, but
-    until then the synchronous scan IS the resolve path.
+    walking ``page_size * max_pages`` records sequentially. With the
+    current bound the scan looks at up to 3 000 records (~3 s worst-case
+    on miss; ~1 s on hit when the target sits in the first page).
+
+    Trade-off accepted (owner decision 2026-05-21 after empirical spike
+    against live api.klardaten.com): VGM numbers in DATEV instances with
+    more than 3 000 documents that aren't in the first 3 page rotations
+    will yield a false-negative ``"nicht gefunden"``. Acceptable until
+    klardaten exposes a server-side number→GUID lookup. The persisted-
+    index alternative (see ADR-0001 + the ``Superseded`` section) was
+    rejected as over-engineered for the measured behavior.
 
     Args:
         klardaten_client: Any object implementing
@@ -59,9 +65,9 @@ def resolve_binder_guid_by_number(
             kept as a parameter so a future server with real pagination
             can be exercised without a signature change.
         max_pages: Cap on how many pages to walk before giving up. With
-            the defaults the scan looks at up to 50 000 records — large
-            enough for current DATEV instances but bounded so a
-            mis-configured run cannot loop indefinitely.
+            the defaults the scan looks at up to 3 000 records — bounds
+            miss-latency to ~3 s on production while accepting the
+            false-negative trade-off above.
 
     Returns:
         The matching document's ``id`` as a ``str`` (the GUID expected

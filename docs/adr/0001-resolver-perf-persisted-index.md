@@ -1,6 +1,6 @@
 # ADR-0001 — Resolver performance: persisted SQLite number→GUID index, no synchronous scan
 
-- **Status:** Accepted (2026-05-19)
+- **Status:** Superseded 2026-05-21 (see "Superseded 2026-05-21" section at end)
 - **Deciders:** Owner (product verdict + design lock), via spike + design escalation
 - **Supersedes:** none
 - **Related:** memory `slice-4b-blocked-resolver-perf`, `project-datev-dms-v2-schema`;
@@ -134,3 +134,43 @@ tests. Step 0 of that slice MUST explicitly name:
   (GUID-for-a-number is stable).
 - **Permanent finding:** DATEV/klardaten has no server-side filter of any
   shape; the `$skip` scan is the only primitive. Do not re-litigate.
+
+## Superseded 2026-05-21
+
+An empirical spike against live `api.klardaten.com` falsified the
+"45 s = full scan complete" premise this ADR was built on. The 45 s
+worst-case was **50 iterations of a paginating loop** (`max_pages=50`),
+NOT a complete acquisition of the DATEV doc set. Measured behavior on
+production-equivalent data:
+
+- HIT path (number exists, found in first page): ~0.9 s
+- MISS path (default `max_pages=50`, full 50 × 1 s pages): ~44.3 s
+- GAP path (sparse-gap number, full dataset walk via `$skip`): ~0.87 s
+  — confirms `$skip` does paginate correctly on the production endpoint
+  (a separate side-finding contradicts the earlier `$skip`-ignored
+  reading, but the dominant constraint is still the absence of a
+  server-side filter).
+
+**Decision change:** drop the persisted-index design in favor of a
+**single-line cap tightening** in `resolve_binder_guid_by_number`:
+`max_pages: int = 50 → 3`. New worst-case miss latency: ~3 s. Trade-off
+accepted: VGM numbers in DATEV instances with > 3 000 documents that
+aren't in the first 3 page rotations will yield a false-negative
+`"nicht gefunden"`. Acceptable for current SB deployments; revisit if
+klardaten ever exposes a server-side number→GUID lookup, or if a
+deployment exceeds the 3 000-doc threshold and the false-negative rate
+becomes observable.
+
+**What this ADR's design remains valid for:** if klardaten ever
+exposes a count endpoint or enumeration cursor, the persisted-index
+approach (atomic-swap SQLite, background refresh, cold-start signal)
+is a known-good path — keep this document for reference. The
+`.overseer/slice/resolver-perf.md` planning artifact remains as a
+record of the rejected slice, including the 5 hardest seams analysis
+which is reusable on any future "background refresh + atomic state"
+work.
+
+**Falsifying evidence:** measurement run 2026-05-21 against live
+api.klardaten.com (hit/miss/gap probe). The Slice-1 memory claiming
+"$skip ignored" is also revised by this spike; both pieces of prior
+knowledge proved wrong on production data.

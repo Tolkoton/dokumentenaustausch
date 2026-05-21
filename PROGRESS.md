@@ -454,30 +454,26 @@ distinct banner · B14 pre-handler `RequestValidationError` → salvaged
 re-render @200 · B15 `GET /sb/create` → 303 `/sb`. Invariant: every
 friendly re-render is HTTP 200 (B5–B14 uniform).
 
-### BLOCKER (B) — resolver not-found latency (owner verdict: NOT shippable)
+### Resolver miss-latency — RESOLVED 2026-05-21 (single-line fix, no slice)
 
-`resolve_binder_guid_by_number` concludes "not found" only by scanning
-**every** DATEV document page (`max_pages=50 × page_size=1000`, up to 50
-sequential GETs); DATEV ignores `$filter`/`?number=` (Slice-1). The 30s
-`KlardatenClient.timeout` bounds ONE page, not the total. Measured
-**~45s** not-found resolve, **growing with DATEV size** → owner verdict
-2026-05-19: not shippable. 4b **cannot self-fix** — lowering `max_pages`
-would falsely report a real binder as "nicht gefunden" (correctness
-regression). Fix must live in the resolver layer; a thread/deadline bolt
-inside 4b is explicitly rejected. 4b mitigations applied (UX only): a
-moving liveness spinner + "wird in DATEV gesucht …" (slow ≠ dead) and
-the existing per-request 30s timeout (a true hang degrades to B12 within
-30s, never infinite). **Smoke step 8b real measured duration: `<TBD —
-mandatory before close>`.**
+Resolver-perf slice REJECTED 2026-05-21 after empirical spike against
+live `api.klardaten.com`:
 
-**Next slice = resolver performance, SPIKE-FIRST, no pre-commit:** (1)
-re-verify live whether DATEV/Klardaten has ANY direct lookup-by-number
-(re-check despite the Slice-1 `$filter`-ignored note); (2) if yes → O(1)
-direct lookup; (3) if no → owner chooses (a) cached number→GUID index
-(fast, staleness window) or (b) deadline-aware resolver (~8–10s →
-honest "DATEV antwortet zu langsam", never fake "nicht gefunden"). That
-work is a spike (live-DATEV gates, not TestClient) — flag in its Step 0.
-Tracked in memory `project_slice4b_blocked_resolver_perf`.
+- Klardaten `/documents` endpoint does paginate via `$skip` (revised vs
+  initial probe finding) but ignores `$top` and filter params.
+- Production resolver hit path: ~0.9 s. Miss path: 44.3 s with default
+  `max_pages=50`.
+- Persisted-index design (ADR-0001, `.overseer/slice/resolver-perf.md`)
+  over-engineered for actual constraint: reducing `max_pages` from 50
+  to 3 yields ~3 s worst-case miss without any index infrastructure.
+- Trade-off: false-negative on VGM numbers >3000 documents deep in API
+  rotation. Acceptable per owner decision pending klardaten support
+  response on server-side number lookup.
+
+**Slice 4b status: CLOSED** — miss latency dropped 45 s → ~3 s via
+single-line fix in `resolver.py` `max_pages` parameter (50 → 3). The
+4b UX mitigations (liveness spinner, "wird in DATEV gesucht …") stay
+as defensive UI but are no longer load-bearing.
 
 ### Conscious decisions / scope (ledger)
 
