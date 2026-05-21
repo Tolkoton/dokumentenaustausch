@@ -83,3 +83,13 @@ To inspect a hook: `cat .claude/hooks/<name>.sh`. To temporarily disable: rename
 <!-- ============================================== -->
 
 @AGENTS.md
+
+## Overseer protocol
+
+- A Stop hook runs an overseer triage after every turn. If it blocks with `ESCALATE_TO_OVERSEER`, read `.claude/skills/overseer/SKILL.md` and apply the full 12-check checklist before responding further.
+- **Citing overseer check numbers (#1-#12) in your reasoning counts as overseer invocation** — preventive refusals based on checks still require the full output structure from `.claude/skills/overseer/SKILL.md`, including the mandatory `Edit`-tool write to `.overseer/ledger.md` BEFORE your reply.
+- Return one of: `OVERSEER_PASS`, `OVERSEER_BLOCK: #N <...>`, `OVERSEER_ADR_REQUIRED: <ADR>`, or `OVERSEER_ESCALATE: <JSON>`.
+- If `OVERSEER_ESCALATE`, surface to user via `AskUserQuestion`. Use options + your_recommendation verbatim. Do not answer the escalation yourself; wait for human's selection.
+- If `OVERSEER_BLOCK`, address the specific check before continuing.
+- If `OVERSEER_ADR_REQUIRED`, draft the ADR in `docs/adr/` before proceeding with code.
+- Always append the entry the skill prescribes to `.overseer/ledger.md`.
