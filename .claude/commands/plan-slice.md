@@ -19,12 +19,35 @@ does NOT already exist. If it does, ask the user whether to (a) start
 fresh and overwrite, (b) read the existing one and refine, or (c) pick
 a different slug.
 
-# Planning conversation — 5 phases, ONE AT A TIME
+# Planning conversation — 6 phases (Phase 0–5), ONE AT A TIME
 
-Walk the user through these 5 questions sequentially. **Do NOT ask all
-5 at once.** Wait for the user's answer to each before moving on.
-After each answer, push back where they're not specific enough, surface
-alternatives they haven't considered, and demand WHY for any decision.
+Phase 0 fires first — a premise probe that verifies the slice's
+load-bearing external-system assumptions before any planning begins. Then
+walk the user through the 5 planning questions (Phases 1–5) sequentially.
+**Do NOT ask all 5 at once.** Wait for the user's answer to each before
+moving on. After each answer, push back where they're not specific
+enough, surface alternatives they haven't considered, and demand WHY for
+any decision.
+
+## Phase 0 — Premise probe
+
+Before any planning, enumerate the load-bearing assumptions this slice makes about external systems (third-party APIs, OS behavior, file system semantics, library versions, network conditions, hardware constraints).
+
+For each assumption, state EXPLICITLY:
+- The assumption (one sentence, falsifiable)
+- The evidence backing it: empirical spike file path + date, OR documentation reference + URL, OR "untested — relying on common knowledge"
+- Whether the evidence is fresh (≤ 7 days old) AND falsifiable from a reproducible spike output
+
+HALT and require owner approval if ANY assumption is:
+- "untested — relying on common knowledge"
+- Backed by a spike older than 7 days that didn't test the SPECIFIC behavior this slice relies on
+- Backed by documentation without a captured runtime confirmation
+
+For each unverified assumption: write a quick spike script (target ≤1 hour effort) that produces a captured output file in `artifacts/spikes/<slug>-<assumption-shortname>-<YYYY-MM-DD>.json` or similar. The slice contract then references this artifact in its "Premise verified" section.
+
+DO NOT proceed to Phase 1 until every load-bearing assumption has fresh empirical backing OR owner has explicitly accepted the risk in writing (recorded as an OPEN item in the slice contract).
+
+This phase exists because resolver-perf slice (2026-05-21) planned 1004 lines on the unverified assumption that DATEV `$skip` pagination advances through the full dataset. The assumption was false. The spike that would have caught it cost ~15 minutes. The slice cost 24+ hours of planning and 16 staged-then-discarded files. Reference: docs/adr/0001-resolver-perf-persisted-index.md "Superseded" section.
 
 ## Phase 1: Goal and scope
 Ask: *"What's the goal of this slice? What's specifically OUT of scope?"*
@@ -76,6 +99,10 @@ exact structure (replace `[...]` with the conversation's outcomes):
 ## Goal
 [one-paragraph statement of what we're building and why]
 
+## Premise verified
+
+(empty for Phase 0 to fill — each load-bearing assumption listed with: statement, evidence pointer to artifacts/spikes/*, freshness date, owner ratification if accepted-as-risk)
+
 ## Out of scope (deliberate)
 - [item 1 — what we're NOT doing in this slice]
 - [item 2]
@@ -125,7 +152,8 @@ exact structure (replace `[...]` with the conversation's outcomes):
 - **DO NOT touch PROGRESS.md** — that's the implementation-phase ledger.
 - **DO NOT create ADRs** unilaterally — surface ADR-worthy decisions, but
   ratify them in conversation with the user before any draft.
-- **DO NOT skip phases.** All 5 are required, even if Phase 5 turns out empty.
+- **DO NOT skip phases.** Phase 0 and all 5 planning phases (1–5) are
+  required, even if Phase 5 turns out empty.
 - **DO push back.** A passive walk-through with no friction is a protocol
   failure. The user needs friction to think clearly. If you've gone 2
   phases without pushing back on anything, deliberately escalate the
