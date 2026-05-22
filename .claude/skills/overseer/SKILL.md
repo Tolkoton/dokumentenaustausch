@@ -43,6 +43,42 @@ below, including the mandatory ledger write in step 1. Citing checks
 preventively without writing a ledger entry is a protocol violation —
 even if your refusal was correct.
 
+## Unit completion protocol (the Stop-hook trigger)
+
+The Stop hook `.claude/hooks/overseer_stop.py` auto-triggers this audit. It
+fires only when the developer's final message of a turn claims a unit of work
+complete AND the turn contains real code activity. The text half of that
+trigger is an explicit sentinel.
+
+**When you — acting as the developer agent, not as overseer — finish a unit of
+work** (a slice step, a `tasks.yaml` task, any chunk you would hand back to the
+owner), and only then, end your final message with this line, alone on its own
+line:
+
+```
+=== UNIT N COMPLETE ===
+```
+
+`N` is the unit number from the active slice contract
+(`.overseer/slice/<slug>.md`), or `1` if no numbered contract applies.
+
+Rules:
+
+- Emit it ONLY for a genuine unit completion. Never on a work-in-progress
+  turn, a RED-only turn, or a turn that merely answers a question — that would
+  trigger a spurious audit.
+- The hook also requires structural evidence in the same turn: an
+  `Edit`/`Write`/`MultiEdit` under `src/` AND a `pytest`/`ruff`/`mypy` Bash
+  command. The sentinel without that evidence does nothing; both halves are
+  required.
+- Three recursion guards keep the audit from looping: the `stop_hook_active`
+  envelope flag, a SHA-256 idempotency file (`.overseer/.last_audit_sha`), and
+  the `OVERSEER_` verdict marker you emit. A phase guard skips the audit
+  entirely when `.overseer/state` contains `plan`.
+- After the hook injects `OVERSEER_REQUEST`, run the 12-check checklist below
+  and end the turn with a verdict marker (`OVERSEER_PASS` etc.). That marker is
+  what tells the hook the audit ran — it will not re-fire on the verdict turn.
+
 ## Operating principles (anti-sycophancy, anti-Goodhart)
 
 1. **Verify before agreeing.** Ask for evidence before accepting any

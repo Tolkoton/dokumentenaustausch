@@ -1,0 +1,106 @@
+# Stop-hook mechanics spike — STEP 1 of the overseer-on-stop hook task
+# Outcome: HALT. Premise problem found — exactly what STEP 1 exists to catch.
+
+SUMMARY
+The in-session probe round-trip the task prescribes (write probe -> wire into
+settings.json -> trigger Stop -> cat the log) cannot execute as designed:
+Claude Code snapshots hook configuration at session start, so a settings.json
+hook added mid-session does not fire until the session is restarted. STEP 4's
+wire-up smoke has the identical constraint. A1/A2/A3 were therefore answered
+from existing production evidence — .claude/hooks/verify-on-stop.sh, a working
+Stop hook already shipped in this repo — plus the documented Stop-hook schema.
+
+A1 — How the last assistant message reaches a Stop hook  -> NOT as assumed
+  Stop hook input = a JSON envelope on STDIN, with fields:
+    session_id, transcript_path, cwd, hook_event_name, stop_hook_active
+  The last assistant message TEXT is NOT in stdin, NOT in argv, NOT in any
+  CLAUDE_* env var. It is reachable ONLY by opening transcript_path (a JSONL
+  file) and parsing the last record whose type == "assistant".
+  Evidence: verify-on-stop.sh line 7 `INPUT=$(cat)` + line 10
+    `echo "$INPUT" | jq -e '.stop_hook_active == true'` — a working Stop hook
+    proving stdin is JSON carrying .stop_hook_active. verify-on-stop.sh never
+    reads the assistant message at all; it works off `git diff --name-only`.
+  IMPACT: STEP 2 steps 2 and 4 ("read last assistant message", "grep last
+    message for unit-completion patterns") require parsing the transcript
+    JSONL — a transcript-format dependency the task design did not account
+    for. This is the A1 "fail" the task instructed to HALT on.
+
+A2 — stdout JSON injection of {"decision":"block","reason":...}  -> CONFIRMED
+  Emitting {"decision":"block","reason":"<text>"} on stdout with exit 0 makes
+  Claude continue the turn with <text> injected as the reason.
+  Evidence: verify-on-stop.sh lines 62-67 do exactly this in production when
+    lint/typecheck/tests fail. Already proven by shipped code — no probe
+    needed. The injection mechanism the design relies on is sound.
+
+A3 — silent pass-through  -> CONFIRMED
+  exit 0 with no decision:block JSON ends the turn normally.
+  Evidence: verify-on-stop.sh lines 70-80 (success path: print a message,
+    exit 0, turn ends normally). exit 0 with zero output = silent
+    pass-through; standard Stop-hook behavior.
+
+METHODOLOGY BLOCKER (affects STEP 1 trigger/observe AND STEP 4 smoke)
+  Claude Code captures a snapshot of hook configuration at session startup.
+  This is a security measure: a hook is arbitrary code execution, so honoring
+  a mid-session settings.json hook edit would let a prompt-injection register
+  hooks. Changed hooks take effect only after a session restart (or review
+  via the /hooks menu).
+  CONSEQUENCE: STEP 1 "run ls, then cat /tmp/stop-hook-probe.log" and STEP 4
+  "in this same session ... trigger a real Stop event" cannot be observed
+  within this single session. Any newly added Stop hook needs a restart
+  boundary before it is live.
+
+DELIBERATELY NOT DONE
+  - settings.json was NOT modified. Wiring the probe in-session would not make
+    it fire (see methodology blocker); wiring it is the owner's call depending
+    on which path is chosen.
+  - overseer-on-stop.sh (STEP 2) and the guard test (STEP 3) were NOT written
+    — the task instructs HALT on A1/A2 failure, and STEP 2's message-reading
+    design needs revision for the transcript-parsing reality.
+
+DECISION REQUIRED FROM OWNER — see session message.
+
+
+SCHEMA CORRECTION — 2026-05-22
+A1 above (lines 13-18) is partially wrong. It said the last assistant message
+is reached by "parsing the last record whose type == 'assistant'" — assuming
+one assistant record == one assistant message. The overseer-on-stop.sh that
+shipped from STEP 2 encoded a stronger form of the same mistake: its jq
+comment claimed `join() flattens a multi-block assistant turn`, expecting a
+single assistant record to hold a multi-block content array.
+
+WHAT THE SCHEMA ACTUALLY IS
+  Claude Code writes ONE content block per JSONL record. A `thinking`, a
+  `text`, and a `tool_use` block from the same conceptual turn are three
+  separate `type:"assistant"` records, each with a single-element
+  message.content array. No assistant record ever bundles more than one block.
+
+HOW THIS WAS REVEALED (diagnostic Bash output, 2026-05-22 session)
+  Run against a live transcript
+  (~/.claude/projects/-home-lao-Projects-belegmeister/e0d0012d-*.jsonl):
+
+    $ jq -rc 'select(.type=="assistant" ...) | {blocks:[content[].type]}'
+      {"blocks":["thinking"]}
+      {"blocks":["text"]}
+      {"blocks":["tool_use"]}
+      {"blocks":["thinking"]}
+      {"blocks":["text"]}
+      {"blocks":["tool_use"]}
+
+    $ jq -rc 'select(.type=="assistant") | content | map(.type)
+              | select(length>1)'
+      (empty — no record ever holds more than one block)
+
+  Consequence of the old `... | last | content | map(text) | join` jq: when
+  the genuinely-last assistant record is a `tool_use` or `thinking` block,
+  text extraction returns "" and the hook silently passes — it cannot see a
+  completion phrase emitted in an earlier `text` record of the same turn.
+
+THE FIX (Design B, applied 2026-05-22)
+  Reconstruct the conceptual turn instead of reading one record. A turn is the
+  run of assistant records after the most recent user-turn boundary. A boundary
+  is a `type:"user"` record whose message.content is a bare STRING; tool-result
+  records are `type:"user"` too but carry an array, so they are excluded. ALL
+  `text` blocks in that run are joined with newlines, so a completion phrase
+  before a late tool call still counts. isSidechain records stay excluded.
+  See the updated jq in .claude/hooks/overseer-on-stop.sh step 2, and the
+  regression test Case F in tests/test_overseer_on_stop_hook.py.

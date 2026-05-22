@@ -225,6 +225,15 @@
             "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/verify-on-stop.sh\""
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/overseer_stop.py\"",
+            "timeout": 10
+          }
+        ]
       }
     ],
     "SessionStart": [

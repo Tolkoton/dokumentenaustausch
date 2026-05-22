@@ -73,8 +73,9 @@ The Stop hook runs `ruff check`, `mypy`, and `pytest` (only on Python changes). 
 | `protect-paths.sh` | Before Edit/Write/MultiEdit | Hard-blocks edits to secrets, migrations, `.git/`, workflows |
 | `format-on-edit.sh` | After Edit/Write/MultiEdit | Runs `ruff format` + `ruff check --fix --select I` on `.py` files |
 | `verify-on-stop.sh` | On turn end | Runs lint/typecheck/tests on changed Python; blocks turn if any fail |
+| `overseer_stop.py` | On turn end | On a unit-completion claim (sentinel + `src/` edit + test/lint/type run), injects an `OVERSEER_REQUEST` 12-check audit prompt. See "Overseer protocol" below. |
 
-To inspect a hook: `cat .claude/hooks/<name>.sh`. To temporarily disable: rename to `<name>.sh.disabled` or pass `claude --disable-hooks` flag.
+To inspect a hook: `cat .claude/hooks/<name>`. To temporarily disable: rename to `<name>.disabled` or pass `claude --disable-hooks` flag.
 
 <!-- ============================================== -->
 <!-- End of autonomy policy. Your implementation skill -->
@@ -86,10 +87,36 @@ To inspect a hook: `cat .claude/hooks/<name>.sh`. To temporarily disable: rename
 
 ## Overseer protocol
 
-- A Stop hook runs an overseer triage after every turn. If it blocks with `ESCALATE_TO_OVERSEER`, read `.claude/skills/overseer/SKILL.md` and apply the full 12-check checklist before responding further.
+- The Stop hook `.claude/hooks/overseer_stop.py` auto-triggers an overseer
+  12-check audit when a turn **claims a unit of work complete** — it does
+  **not** run on every turn. It fires only on a two-signal match: the sentinel
+  `=== UNIT N COMPLETE ===` alone on its own line in your final message, AND
+  structural evidence in the same turn (an `Edit`/`Write`/`MultiEdit` under
+  `src/` plus a `pytest`/`ruff`/`mypy` Bash command).
+- **Sentinel convention.** End your final message with `=== UNIT N COMPLETE ===`
+  alone on its own line ONLY when you finish a genuine unit of work (a slice
+  step, a `tasks.yaml` task). `N` is the unit number from the active slice
+  contract (`.overseer/slice/<slug>.md`), or `1` if none applies. Do **not**
+  emit it on a work-in-progress, RED-only, or question-answering turn — that
+  triggers a spurious audit. Full developer-facing rules: the "Unit completion
+  protocol" section of `.claude/skills/overseer/SKILL.md`.
+- When the hook fires it injects `OVERSEER_REQUEST`. On seeing it, read
+  `.claude/skills/overseer/SKILL.md` and apply the full 12-check checklist
+  before responding further.
 - **Citing overseer check numbers (#1-#12) in your reasoning counts as overseer invocation** — preventive refusals based on checks still require the full output structure from `.claude/skills/overseer/SKILL.md`, including the mandatory `Edit`-tool write to `.overseer/ledger.md` BEFORE your reply.
-- Return one of: `OVERSEER_PASS`, `OVERSEER_BLOCK: #N <...>`, `OVERSEER_ADR_REQUIRED: <ADR>`, or `OVERSEER_ESCALATE: <JSON>`.
+- **Verdict format.** End the audit turn with exactly one verdict marker on its
+  own line: `OVERSEER_PASS` / `OVERSEER_BLOCK: #N <reason>` /
+  `OVERSEER_ADR_REQUIRED: <ADR>` / `OVERSEER_ESCALATE: <JSON>`. Emitting any
+  `OVERSEER_` marker is also recursion guard 3 — it tells the hook the audit
+  already ran, so it will not re-fire on your verdict turn.
 - If `OVERSEER_ESCALATE`, surface to user via `AskUserQuestion`. Use options + your_recommendation verbatim. Do not answer the escalation yourself; wait for human's selection.
 - If `OVERSEER_BLOCK`, address the specific check before continuing.
 - If `OVERSEER_ADR_REQUIRED`, draft the ADR in `docs/adr/` before proceeding with code.
 - Always append the entry the skill prescribes to `.overseer/ledger.md`.
+- **Recursion safety & override.** The hook has three guards — the
+  `stop_hook_active` envelope flag, a SHA-256 idempotency file
+  (`.overseer/.last_audit_sha`), and the `OVERSEER_` verdict marker above — and
+  a phase guard that skips the audit when `.overseer/state` contains `plan`.
+  Kill-switch: rename `.claude/hooks/overseer_stop.py` to `*.disabled`, or
+  start Claude Code with `--disable-hooks`. Smoke-test the wiring with
+  `python3 .claude/hooks/overseer_stop.py --dry-run` (always emits a block).

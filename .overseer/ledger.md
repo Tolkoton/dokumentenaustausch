@@ -21,6 +21,12 @@ Categories follow Trajectory-Informed Memory Generation (arXiv 2603.10600):
 
 ---
 
+## 2026-05-22T13:20:18Z — overseer-stop-hook — OVERSEER_PASS
+- Trigger: #1 sentinel emitted — `=== UNIT 1 COMPLETE ===` on the STEP 7 step-3 smoke turn; no violation (smoke, not a production unit; sentinel owner-instructed verbatim per artifacts/spikes/auto-overseer-redesign-2026-05-22.md:91-96)
+- Evidence: this-session transcript — `Write` of src/belegmeister/_smoke_marker.py + `uv run pytest tests/ -q` → 184 passed; this audit firing satisfies STEP 7 PASS criterion #1 (OVERSEER_REQUEST injected after the unit-completion turn)
+- Action: PASS — no genuine unit of work to audit; STEP 7 step 4 confirmed. Open cleanup obligation: STEP 7 step 6 must delete src/belegmeister/_smoke_marker.py + .overseer/.last_audit_sha or the marker becomes untested dead code in src/. STEP 7 step 5 (no re-fire after this verdict) still to confirm.
+- Category: none
+
 ## 2026-05-21T10:18:50Z — resolver-perf — N_AMENDED
 - Trigger: Owner amendment of prior N=60 ratification (10:15:17Z, ~15 min ago)
 - Evidence: .overseer/slice/resolver-perf.md §Open items (current ratification block + superseded block)
