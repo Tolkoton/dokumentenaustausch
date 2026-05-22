@@ -62,12 +62,18 @@ from belegmeister.env_validation import (
     validate_secret,
 )
 from belegmeister.klardaten.client import KlardatenClient
+from belegmeister.logging_setup import configure_logging
 from belegmeister.validation_errors import validation_error_items
 
 # Same .env bootstrap rationale as web/app.py: under uvicorn the
 # env-reading deps would KeyError mid-request without this (the Slice-3
 # load_dotenv-gap smoke finding). Unit tests override the deps.
 load_dotenv()
+
+# Configure root logging at module import so `uvicorn belegmeister.sb.app:app`
+# triggers it directly — not only the `python -m belegmeister` CLI path.
+# Idempotent: a no-op when logging is already configured (e.g. pytest caplog).
+configure_logging()
 
 logger = logging.getLogger("belegmeister.sb")
 

@@ -33,6 +33,7 @@ from belegmeister.env_validation import (
     validate_secret,
 )
 from belegmeister.klardaten.client import KlardatenClient
+from belegmeister.logging_setup import configure_logging
 from belegmeister.web.request_view import (
     LetterSource,
     RequestLinkInvalid,
@@ -44,6 +45,11 @@ from belegmeister.web.request_view import (
 # (500, before the route's try/except) instead of serving. Found by the
 # Slice-3 smoke — unit tests override the deps so they never hit env.
 load_dotenv()
+
+# Configure root logging at module import so `uvicorn belegmeister.web.app:app`
+# triggers it directly — not only the `python -m belegmeister` CLI path.
+# Idempotent: a no-op when logging is already configured (e.g. pytest caplog).
+configure_logging()
 
 logger = logging.getLogger("belegmeister.web")
 

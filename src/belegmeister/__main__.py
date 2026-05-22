@@ -38,6 +38,7 @@ from belegmeister.env_validation import (
     validate_secret,
 )
 from belegmeister.klardaten.client import KlardatenClient
+from belegmeister.logging_setup import configure_logging
 from belegmeister.validation_errors import validation_error_items
 
 
@@ -257,6 +258,11 @@ def main(argv: list[str] | None = None) -> int:
           ``/document-files`` and ``/documents/{binder}/structure-items``)
           via ``run_create_request`` for the ``create-request`` command.
     """
+    # Bootstrap logging before anything else so belegmeister.* log lines
+    # reach the console on every CLI invocation. Idempotent; not env
+    # validation, so it does not gate --help.
+    configure_logging()
+
     # Argparse first so --help / -h short-circuit via SystemExit before
     # any env validation runs (env errors should not gate --help output).
     parser = _build_parser()
