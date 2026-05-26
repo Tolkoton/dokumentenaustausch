@@ -207,11 +207,12 @@ _EMPTY_FORM = _FormInput(vgm_number="", to="", cc="", subject="", body="", quest
 
 
 # The 4a `_clean_questions` validator embeds a 0-based index in its
-# message ("question 0 must not be blank", ...). We read that index to
-# co-locate the error at the offending row — a cross-layer read of the
-# 4a message-as-contract (pinned by B8; same discipline as Slice-3's
-# literal pinning). 0-based is the 4a `enumerate` default, NOT a choice
-# we make here.
+# message ("question 0 must be a single line ...", "question 0 must not
+# contain the reserved request marker"). Blank rows now drop silently
+# and never raise — the surviving checks (single-line, sentinel
+# collision) keep the indexed-message contract so this regex still
+# co-locates the error at the offending row. 0-based is the 4a
+# `enumerate` default, NOT a choice we make here.
 _QUESTION_INDEX_RE = re.compile(r"\bquestion (\d+)\b")
 
 
@@ -290,10 +291,11 @@ def _collect_form_input(
     questions: list[str],
 ) -> _FormInput:
     """Capture the submission VERBATIM. Empty question rows the SB added
-    themselves are kept as-is — they added them, they should see them on
-    a re-render. Rejecting/stripping blank questions is the job of
-    `CreateRequestArgs._clean_questions` at submit, NOT of the form
-    round-trip. (Explicit decision, not incidental.)"""
+    themselves are kept as-is in the form-input snapshot — so a
+    re-render (after some OTHER field fails) shows what they typed,
+    blanks included. Stripping blanks is the job of
+    `CreateRequestArgs._clean_questions` at submit (it drops them
+    silently); the form round-trip itself does not strip."""
     return _FormInput(
         vgm_number=vgm_number,
         to=to,

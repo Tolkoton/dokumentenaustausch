@@ -30,9 +30,11 @@ def _multi_field_error() -> ValidationError:
 
     Note: the 4a *domain* questions validator (`_clean_questions`)
     validates the whole list and raises `ValueError("question N ...")`,
-    so a blank/sentinel question yields loc `("questions",)` with the
-    index only in the message. A multi-element loc requires a per-ITEM
-    failure — here a non-str item (`123`) tripping `list[str]` coercion.
+    so a sentinel-collision / multi-line question yields loc
+    `("questions",)` with the index only in the message (blank entries
+    drop silently and never raise). A multi-element loc requires a
+    per-ITEM failure — here a non-str item (`123`) tripping `list[str]`
+    coercion.
     """
     with pytest.raises(ValidationError) as ei:
         CreateRequestArgs.model_validate(

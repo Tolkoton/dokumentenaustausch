@@ -15,6 +15,7 @@ import httpx
 import pytest
 
 from belegmeister.magic_link.token import generate_token
+from belegmeister.request_format import RequestLetter, serialize_request_letter
 from belegmeister.web.request_view import (
     RequestLinkInvalid,
     RequestView,
@@ -25,7 +26,18 @@ SECRET = "w" * 48
 NOW = datetime(2026, 5, 15, 12, 0, 0, tzinfo=timezone.utc)
 VGM = "3bf17a53-42ca-4a03-9275-213bd1c6b263"
 
-_LETTER_BYTES = "Sehr geehrte Damen und Herren, bitte Belege 2026.".encode("utf-8")
+# Wire-format `request/v1` payload. After the Step 0 refactor,
+# `resolve_request_view` parses what `download_document_file` returns,
+# so the fixture must be a serializable letter rather than plain text.
+_LETTER_BODY = "Sehr geehrte Damen und Herren, bitte Belege 2026."
+_LETTER_OBJ = RequestLetter(
+    to="client@example.com",
+    cc="",
+    subject="Belege 2026",
+    body=_LETTER_BODY,
+    questions=(),
+)
+_LETTER_BYTES = serialize_request_letter(_LETTER_OBJ).encode("utf-8")
 
 
 class _FakeLetterSource:
@@ -83,7 +95,8 @@ def test_RV1_valid_token_single_letter_returns_request_view() -> None:
     assert isinstance(view, RequestView)
     assert view.vgm_id == VGM
     assert view.letter_filename == "_request_letter_2026-05-15T080805Z.txt"
-    assert view.letter_text == _LETTER_BYTES.decode("utf-8")
+    assert view.letter == _LETTER_OBJ
+    assert view.letter.body == _LETTER_BODY
     assert src.list_calls == [VGM]
     assert src.download_calls == [1152156]
 

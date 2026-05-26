@@ -403,15 +403,17 @@ def test_B7c_invalid_email_in_cc_rerenders_form_no_core() -> None:
     assert "garbage-not-an-email" in r.text
 
 
-def test_B8_blank_question_rerenders_all_rows_with_error_at_that_row() -> None:
+def test_B8_blank_question_rows_drop_silently_and_request_proceeds() -> None:
     fake = _FakeClient()
     client = _client(fake)
 
-    # 0-based 4a convention: index 1 is the SECOND row -> "question 1"
+    # SB clicked "+" three times, only filled rows 1 and 3. The middle
+    # blank row must drop silently — submission succeeds, only the two
+    # non-blank questions reach the core, in their original order.
     r = client.post(
         "/sb/create",
         data={
-            "vgm_number": "395357",
+            "vgm_number": str(VGM_NUMBER),
             "to": "mandant@example.com",
             "cc": "",
             "subject": "Unterlagen 2026",
@@ -420,34 +422,42 @@ def test_B8_blank_question_rerenders_all_rows_with_error_at_that_row() -> None:
         },
     )
 
-    assert r.status_code == 200  # not 500
+    assert r.status_code == 200
     body = r.text
-    assert 'action="/sb/create"' in body  # the form, re-rendered
 
-    # resolve succeeded, core never reached
-    assert fake.list_documents_called is True
-    assert fake.attached is None
+    # success path: result page, NOT a form re-render
+    assert 'action="/sb/create"' not in body
+    assert "must not be blank" not in body
 
-    # ALL THREE question rows preserved, in order (good rows keep text)
-    qfields = body.count('name="questions"')
-    # 3 rendered rows + the hidden <template> clone row = 4 inputs
-    assert qfields >= 3
-    pA = body.find("Fahrtkosten 2026?")
-    pC = body.find("Arbeitszimmer genutzt?")
+    # core reached with exactly the two non-blank questions, in order
+    assert fake.attached is not None
+    assert fake.attached["binder_guid"] == VGM_GUID
+    letter = fake.attached["file_bytes"].decode("utf-8")
+    pA = letter.find("Fahrtkosten 2026?")
+    pC = letter.find("Arbeitszimmer genutzt?")
     assert pA != -1 and pC != -1 and pA < pC
 
-    # the 4a message (0-based "question 1") is present...
-    assert "question 1 must not be blank" in body
-    # ...and CO-LOCATED with the offending (2nd) row, not dumped at top:
-    # it appears after the 1st row's value and before the 3rd row's value
-    err = body.find("question 1 must not be blank")
-    assert pA < err < pC
 
-    # visible human numbering so the row is identifiable in the UI
-    assert "Frage 1" in body and "Frage 2" in body and "Frage 3" in body
+def test_B8b_all_blank_question_rows_drop_to_empty_and_succeed() -> None:
+    fake = _FakeClient()
+    client = _client(fake)
 
-    # not confused with the other stages
-    assert "Zahl" not in body and "nicht gefunden" not in body
+    # SB added rows but filled none — equivalent to zero questions.
+    r = client.post(
+        "/sb/create",
+        data={
+            "vgm_number": str(VGM_NUMBER),
+            "to": "mandant@example.com",
+            "cc": "",
+            "subject": "Unterlagen 2026",
+            "body": "Sehr geehrte Frau Müller,\n\nbitte Belege.",
+            "questions": ["", "   ", "\t"],
+        },
+    )
+
+    assert r.status_code == 200
+    assert 'action="/sb/create"' not in r.text  # success page
+    assert fake.attached is not None
 
 
 @pytest.mark.parametrize(

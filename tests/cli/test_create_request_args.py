@@ -103,12 +103,27 @@ def test_RC2_V8_body_sentinel_collision_rejected() -> None:
         )
 
 
-@pytest.mark.parametrize("bad", ["   ", "frage\nzeile2", "==BELEGMEISTER== fragen"])
+@pytest.mark.parametrize("bad", ["frage\nzeile2", "==BELEGMEISTER== fragen"])
 def test_RC2_V9_bad_question_rejected(bad: str) -> None:
     with pytest.raises(ValidationError, match="question"):
         CreateRequestArgs.model_validate(
             _valid_data(questions=["gut?", bad]), context={"now": NOW}
         )
+
+
+@pytest.mark.parametrize("blank", ["", "   ", "\t", "\n", "  \t  "])
+def test_RC2_V9b_blank_question_drops_silently(blank: str) -> None:
+    args = CreateRequestArgs.model_validate(
+        _valid_data(questions=["gut?", blank, "auch gut?"]), context={"now": NOW}
+    )
+    assert args.questions == ["gut?", "auch gut?"]
+
+
+def test_RC2_V9c_all_blank_questions_collapse_to_empty() -> None:
+    args = CreateRequestArgs.model_validate(
+        _valid_data(questions=["", "   ", "\t"]), context={"now": NOW}
+    )
+    assert args.questions == []
 
 
 def test_RC3_expires_at_in_past_rejected() -> None:

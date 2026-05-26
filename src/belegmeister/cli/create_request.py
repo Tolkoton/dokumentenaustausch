@@ -106,8 +106,10 @@ class CreateRequestArgs(BaseModel):
             and must not contain a line starting with the request-marker
             sentinel.
         questions: Optional list of single-line questions for the
-            Mandant. Each question is stripped; blanks and sentinel
-            collisions raise ``ValueError``. Order is preserved.
+            Mandant. Each question is stripped; blank entries drop
+            silently (so SB-form rows added but not filled are not an
+            error), and sentinel collisions / multi-line entries raise
+            ``ValueError``. Order of surviving entries is preserved.
         expires_at: Magic-link hard expiry. Must be in the future of
             the validation context's ``now`` AND within
             ``MAX_TTL_DAYS`` (7) of it.
@@ -187,7 +189,12 @@ class CreateRequestArgs(BaseModel):
             # verbatim field). Empty list stays empty (zero questions ok).
             stripped = question.strip()
             if is_blank(stripped):
-                raise ValueError(f"question {index} must not be blank")
+                # Blank rows drop silently. The SB form's "+" button adds
+                # rows speculatively; an unfilled row is "no question
+                # here," not an error. Index in subsequent error messages
+                # remains the ORIGINAL submitted index so co-location at
+                # the offending row still works for the surviving checks.
+                continue
             if not is_single_line(stripped):
                 raise ValueError(
                     f"question {index} must be a single line (no newline / CR)"

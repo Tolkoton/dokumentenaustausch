@@ -145,7 +145,11 @@ def request_page(
         Either:
 
         * ``request.html`` at HTTP 200 with ``{"token": token,
-          "letter_text": <utf-8 string>}`` on the happy path, OR
+          "subject": ..., "body": ..., "questions": ...}`` on the
+          happy path — narrowed context at the route boundary;
+          ``letter.to`` and ``letter.cc`` are deliberately NEVER
+          passed to the Jinja2 namespace (Decision D-S8 — privacy +
+          XSS-surface reduction by construction), OR
         * ``invalid.html`` at HTTP 404 on any failure
           (``RequestLinkInvalid``). The client-facing message is the
           same regardless of which stage failed.
@@ -168,8 +172,22 @@ def request_page(
             exc.log_context,
         )
         return templates.TemplateResponse(request, "invalid.html", status_code=404)
+    # S8 narrow (Decision D-S8): the Jinja2 template context carries
+    # ONLY {subject, body, questions} from the parsed letter — `letter.to`
+    # and `letter.cc` are filtered out at the route boundary and never
+    # enter the template namespace. This is privacy-by-construction
+    # (Cc would disclose internal recipients to the Mandant; To is
+    # redundant with the Mandant's own address) AND XSS-surface-reduction-
+    # by-construction (the template cannot accidentally render what was
+    # never passed). RequestView still carries to/cc for the future
+    # email-slice's SMTP needs.
     return templates.TemplateResponse(
         request,
         "request.html",
-        {"token": token, "letter_text": view.letter_text},
+        {
+            "token": token,
+            "subject": view.letter.subject,
+            "body": view.letter.body,
+            "questions": view.letter.questions,
+        },
     )

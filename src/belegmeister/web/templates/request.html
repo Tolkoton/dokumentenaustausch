@@ -9,14 +9,26 @@
 <body class="bg-slate-100 min-h-screen py-10">
   <main class="max-w-2xl mx-auto bg-white rounded-xl shadow p-8">
     <h1 class="text-xl font-semibold text-slate-800 mb-4">
-      Dokumentanforderung Ihrer Kanzlei
+      {{ subject }}
     </h1>
 
     <section class="mb-6">
-      <pre class="whitespace-pre-wrap break-words text-sm text-slate-700 bg-slate-50 border border-slate-200 rounded p-4">{{ letter_text }}</pre>
+      <div class="whitespace-pre-wrap break-words text-sm text-slate-700 bg-slate-50 border border-slate-200 rounded p-4">{{ body }}</div>
     </section>
 
     <form action="/r/{{ token }}/submit" method="POST" enctype="multipart/form-data" class="space-y-5">
+      {% if questions %}
+      <section id="questions-block" class="space-y-4">
+        {% for q in questions %}
+        <div>
+          <label for="answer-{{ loop.index0 }}" class="block text-sm font-medium text-slate-700 mb-1">{{ q }}</label>
+          <input id="answer-{{ loop.index0 }}" name="answer_{{ loop.index0 }}" type="text"
+                 class="w-full border border-slate-300 rounded p-2 text-sm">
+        </div>
+        {% endfor %}
+      </section>
+      {% endif %}
+
       <div>
         <label class="block text-sm font-medium text-slate-700 mb-1">
           Dateien hochladen
@@ -30,14 +42,14 @@
 
       <div>
         <label class="block text-sm font-medium text-slate-700 mb-1">
-          Ihre Antworten / Kommentare
+          Anmerkungen (optional)
         </label>
-        <textarea name="response" required rows="5"
+        <textarea name="response" rows="5"
                   class="w-full border border-slate-300 rounded p-2 text-sm"></textarea>
       </div>
 
       <button type="submit"
-              class="bg-slate-800 text-white px-5 py-2 rounded hover:bg-slate-700">
+              class="bg-slate-800 text-white px-5 py-2 rounded hover:bg-slate-700 disabled:opacity-50">
         Senden
       </button>
     </form>
