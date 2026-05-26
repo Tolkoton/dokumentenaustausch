@@ -561,3 +561,36 @@ feat(sb): SB request-creation web form (4b) — CODE COMPLETE, BLOCKED
 - BLOCKED: resolver not-found ~45s (O(all-docs) scan) is not shippable;
   next slice = resolver-perf spike-first. Not closed.
 ```
+
+## magic-link-ui — CODE COMPLETE 2026-05-26
+
+**Smoke verified:**
+- VGM #395357 (Dokumentnummer; resolved GUID via /sb create flow; observed in uvicorn log)
+- Question strings: "q1", "q2", "q3" (smoke fixtures; future smokes per artifact use distinctive alpha/beta/gamma to avoid substring collisions)
+- Browser: Chrome on Linux
+- Desktop viewport: PASS for parsed-letter rendering, indexed inputs, slate-styled submit, view-source absent of To/Cc
+- Mobile viewport (375×667 iPhone SE preset, Chrome DevTools): not tested in this session — owner deferred to pre-production smoke per D-4 deployment gating
+- Invalid-token branch (one char modified): not tested in this session — covered by test_RT2_invalid_token_404_generic_no_disclosure_structured_log unit-level guard
+- Zero-questions case: not tested in this session — covered by test_question_section_hidden_when_no_questions S4 unit-level guard
+- New label "Anmerkungen (optional)" renders, browser does not block empty submit
+- POST /r/{token}/submit → 404 verified-as-expected per artifact D-4 (live submit blocked until submit-slice ships); GET /r/{token} → 200 with successful resolver chain through Klardaten API (structure-items + document-files calls observed in uvicorn log) — strong signal that frontend is production-ready pending submit handler
+
+**Tests:** 190 baseline → 201 final (+10 magic-link-ui net; +1 chore test_10)
+- Added (magic-link-ui, 11 new): test_parsed_subject_renders_in_h1, test_parsed_body_renders_without_wire_markers, test_per_question_inputs_have_distinct_indexed_names, test_per_question_inputs_ordered_with_question_text, test_subject_html_escaped, test_body_html_escaped, test_question_text_html_escaped, test_question_section_hidden_when_no_questions, test_letter_malformed_logs_reason_and_returns_404, test_to_and_cc_not_in_rendered_page, test_response_textarea_is_optional (UNIT 7)
+- Deleted (1): test_RT3_xss_letter_text_is_html_escaped — replaced by S3-T1/T2/T3 per D-S3
+- Mechanical: RequestView field rename sweep in tests/web/ per Phase 0 C
+- Chore (+1): test_overseer_stop test_10 for CONTINUE-injection idempotency
+
+**Surprises / Pre-G4 notes:**
+- UNIT 1 discovered artifact test-count baseline (165) was stale; actual baseline 190 (project gained tests between 4b and slice start). Flagged, no functional impact.
+- Pre-existing ruff-format drift in .claude/hooks/auto-approve-web.py — flagged at UNIT 1, NOT touched (scope discipline).
+- Infrastructure churn during slice: autonomy-clause revert at UNIT 2 + hook contract change at UNIT 5 (paired chore commit covers it). Loop reliability lesson — infrastructure changes do not belong mid-slice.
+- UNIT 6 smoke-revealed: textarea label "Ihre Antworten / Kommentare" conflated with per-question answer inputs; renamed to "Anmerkungen".
+- UNIT 7 smoke-revealed: response textarea was incorrectly marked required at HTML level; D-P1.2 specified handler-level policy; corrected to optional with visible "(optional)" indicator.
+- UNIT 7 devil's-advocate finding (informational, deferred): <input name=files required> retains HTML-level required; D-P1.2 was specified for answer fields and was not extended to files at planning time. Owner decision: defer to submit-slice planning to define file-count policy holistically.
+
+**Token-to-request-instance binding — BLOCKS PRODUCTION /r/ HOSTING:** smoke revealed that creating a new request in the same VGM serves the new letter content under previously-issued tokens. Token currently references VGM identity only, not request-instance identity. Must be resolved before any public /r/ exposure. Needs dedicated slice (or addressed in submit-slice planning where wire/persistence decisions are already on the table).
+
+**Artifact deviations on slice work:** none. All Bucket 1 tests carry planned names and assertions. D-1/D-2/D-E/D-S3/D-S8/D-P1.2/P1.1 implemented per artifact. RT1 wire-contract pin preserved verbatim. Smoke and G4 owner-driven per Phase 4.
+
+**Suggested commits:** see git status — split into feat(web) magic-link-ui and chore(overseer) loop infrastructure.

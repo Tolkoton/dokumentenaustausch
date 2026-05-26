@@ -169,14 +169,32 @@ def test_2_stop_hook_active_short_circuits(
 def test_3_overseer_marker_short_circuits(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Recursion guard 3: an OVERSEER verdict marker in the last message means
-    the audit already ran this turn — do not re-trigger, whichever verdict."""
+    """Recursion guard 3: an OVERSEER verdict marker in the last assistant
+    message determines hook behavior per the verdict's class.
+
+    Halt markers (BLOCK / ESCALATE / ADR_REQUIRED / SLICE_AWAITING_OWNER /
+    SLICE_COMPLETE) — the owner has taken over (or the slice is shipped);
+    the hook silent-passes (no audit re-trigger, no CONTINUE injection).
+
+    PASS marker (OVERSEER_PASS) — autonomous-continuation trigger; the hook
+    emits a continue-block JSON whose reason instructs Claude to proceed
+    with the next unit per the active slice plan. Idempotency is covered
+    by `test_10_overseer_pass_continue_idempotent` (one-shot test_3 here
+    only checks the first-invocation contract).
+    """
     monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(tmp_path))
     transcript = write_transcript(
         tmp_path / "t.jsonl",
         [("Edit", "src/belegmeister/foo.py"), ("Bash", "uv run pytest")],
     )
-    for marker in ("OVERSEER_PASS", "OVERSEER_BLOCK: #4 gap", "OVERSEER_ESCALATE"):
+    halt_markers = (
+        "OVERSEER_BLOCK: #4 gap",
+        'OVERSEER_ESCALATE: {"question": "x"}',
+        "OVERSEER_ADR_REQUIRED: 0005-something",
+        "OVERSEER_SLICE_AWAITING_OWNER: handoff",
+        "OVERSEER_SLICE_COMPLETE: shipped",
+    )
+    for marker in halt_markers:
         payload = base_payload(
             tmp_path,
             last_assistant_message=f"{SENTINEL}\n\nAudit done.\n{marker}",
@@ -184,7 +202,21 @@ def test_3_overseer_marker_short_circuits(
         )
         result = run_hook(payload)
         assert result.returncode == 0, result.stderr
-        assert result.stdout.strip() == "", f"guard failed on {marker!r}"
+        assert result.stdout.strip() == "", f"halt-marker guard failed on {marker!r}"
+
+    # OVERSEER_PASS — emits continue-block JSON (autonomous-continuation)
+    pass_payload = base_payload(
+        tmp_path,
+        last_assistant_message=f"{SENTINEL}\n\nAudit done.\nOVERSEER_PASS",
+        transcript=transcript,
+    )
+    pass_result = run_hook(pass_payload)
+    assert pass_result.returncode == 0, pass_result.stderr
+    pass_decision: dict[str, object] = json.loads(pass_result.stdout)
+    assert pass_decision["decision"] == "block"
+    pass_reason = pass_decision["reason"]
+    assert isinstance(pass_reason, str)
+    assert "OVERSEER_PASS recorded" in pass_reason
 
 
 def test_4_text_sentinel_alone_is_insufficient(
@@ -329,3 +361,50 @@ def test_9_dry_run_always_blocks(
     reason = decision["reason"]
     assert isinstance(reason, str)
     assert "DRY-RUN: would have blocked" in reason
+
+
+def test_10_overseer_pass_continue_idempotent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """OVERSEER_PASS triggers a CONTINUE injection on first sight, but the
+    injection must be idempotent — a second Stop with the *same*
+    `last_assistant_message` must pass silently. Without this guard the
+    hook would re-inject the same CONTINUE prompt every turn until the
+    message text happens to change, looping the autonomous-continuation
+    flow forever on an unchanging PASS.
+
+    Idempotency mirrors the audit-side SHA guard (see test_7), via the
+    `.overseer/.last_continue_sha` file. `tmp_path` is hermetic
+    per-test — the sha file is cleaned automatically when the test exits,
+    no explicit teardown needed.
+    """
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(tmp_path))
+    transcript = write_transcript(
+        tmp_path / "t.jsonl",
+        [("Edit", "src/belegmeister/foo.py"), ("Bash", "uv run pytest")],
+    )
+    payload = base_payload(
+        tmp_path,
+        last_assistant_message=f"{SENTINEL}\n\nAudit done.\nOVERSEER_PASS",
+        transcript=transcript,
+    )
+
+    # First invocation — emits the CONTINUE injection
+    first = run_hook(payload)
+    assert first.returncode == 0, first.stderr
+    first_decision: dict[str, object] = json.loads(first.stdout)
+    assert first_decision["decision"] == "block"
+    first_reason = first_decision["reason"]
+    assert isinstance(first_reason, str)
+    assert "OVERSEER_PASS recorded" in first_reason
+
+    # Second invocation with the identical message — silent passthrough
+    second = run_hook(payload)
+    assert second.returncode == 0, second.stderr
+    assert second.stdout.strip() == "", (
+        "continue idempotency guard failed: identical message re-triggered CONTINUE"
+    )
+
+    # The idempotency artifact lives at the canonical path
+    sha_file = tmp_path / ".overseer" / ".last_continue_sha"
+    assert sha_file.is_file(), "expected .last_continue_sha to be written"

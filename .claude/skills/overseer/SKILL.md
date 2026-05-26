@@ -370,3 +370,18 @@ correct your verdict is.
 
 No closing pleasantries.
 
+
+## Autonomous slice progression — when to halt the loop
+
+The Stop hook re-injects a "continue to next unit" message after every `OVERSEER_PASS`. This drives autonomous unit-to-unit progression without owner intervention.
+
+To halt the loop and return control to the owner, emit one of these markers on its own line **instead of** `OVERSEER_PASS`:
+
+- `OVERSEER_BLOCK: #N <reason>` — audit found a real issue. Owner must intervene before continuing.
+- `OVERSEER_ESCALATE: <JSON>` — something automated check can't adjudicate. Owner must rule.
+- `OVERSEER_ADR_REQUIRED: <ADR>` — decision needs ADR before next unit.
+- `OVERSEER_SLICE_AWAITING_OWNER: <reason>` — slice's last code unit complete; remaining work (smoke walkthrough, G4 write-up, hard-gate formal report) is owner-driven. **Emit this after the last code unit's PASS verdict** to hand off to owner cleanly.
+
+The hook treats these as recursion-guard markers — silent pass, no re-injection. Owner sees the marker and takes over.
+
+`OVERSEER_PASS` alone (any code-unit completion that's not the last one) triggers the next-unit injection automatically.

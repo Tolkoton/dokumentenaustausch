@@ -52,11 +52,24 @@ from typing import NoReturn
 # tolerated so the sentinel survives minor formatting.
 UNIT_DONE_RE = re.compile(r"^[ \t]*=== UNIT \d+ COMPLETE ===[ \t]*$", re.MULTILINE)
 # An overseer verdict already emitted this turn — recursion guard 3.
-OVERSEER_MARKER_RE = re.compile(r"OVERSEER_(?:PASS|BLOCK|ESCALATE|ADR_REQUIRED)")
+# Halt markers — owner takes over, hook silent-passes
+HALT_MARKER_RE = re.compile(r"OVERSEER_(?:BLOCK|ESCALATE|ADR_REQUIRED|SLICE_AWAITING_OWNER|SLICE_COMPLETE)")
+# Pass marker — hook re-injects "continue to next unit" (taskmaster pattern)
+PASS_MARKER_RE = re.compile(r"OVERSEER_PASS\b")
+# Legacy alias for backward compat — any verdict marker
+OVERSEER_MARKER_RE = re.compile(r"OVERSEER_(?:PASS|BLOCK|ESCALATE|ADR_REQUIRED|SLICE_AWAITING_OWNER|SLICE_COMPLETE)")
 # A test / lint / type Bash command — one half of the tool signal.
 CHECK_CMD_RE = re.compile(r"\b(?:pytest|ruff|mypy)\b")
 # File-mutating tools — the other half of the tool signal.
 EDIT_TOOLS = frozenset({"Edit", "Write", "MultiEdit"})
+
+CONTINUE_REASON = (
+    "OVERSEER_PASS recorded. Proceed with the next unit per the active slice plan in .overseer/slice/. "
+    "Do the next pending UNIT's work (src/ edits + pytest/ruff/mypy), then emit `=== UNIT N COMPLETE ===` on its own line. "
+    "If the slice has no more code units (only smoke / G4 owner-driven steps remain), or if you are uncertain what UNIT N is, "
+    "emit `OVERSEER_SLICE_AWAITING_OWNER: <reason>` on its own line to halt and request owner input. "
+    "If the slice's last code unit is complete and smoke / G4 are next, emit `OVERSEER_SLICE_AWAITING_OWNER: smoke and G4 are owner-driven; awaiting owner walkthrough.`"
+)
 
 AUDIT_REASON = (
     "OVERSEER_REQUEST (auto-triggered by the Stop hook on a unit-completion "
@@ -233,8 +246,23 @@ def main() -> NoReturn:
     message = _str_field(envelope, "last_assistant_message")
 
     # Guard 3: an overseer verdict already landed this turn.
-    if OVERSEER_MARKER_RE.search(message):
+        # Halt markers — owner takes over, hook silent-passes
+    if HALT_MARKER_RE.search(message):
         _passthrough()
+
+    # PASS marker — re-inject "continue to next unit" (taskmaster pattern: keep blocking until slice done)
+    if PASS_MARKER_RE.search(message):
+        sha_file = Path(os.environ.get("CLAUDE_PROJECT_DIR", ".")) / ".overseer" / ".last_continue_sha"
+        digest = _message_digest(message)
+        try:
+            if sha_file.read_text(encoding="utf-8").strip() == digest:
+                _passthrough()
+        except OSError:
+            pass
+        sha_file.parent.mkdir(parents=True, exist_ok=True)
+        sha_file.write_text(digest + "\n", encoding="utf-8")
+        print(json.dumps({"decision": "block", "reason": CONTINUE_REASON}))
+        sys.exit(0)
 
     project_dir = Path(os.environ.get("CLAUDE_PROJECT_DIR", ".")).resolve()
 
