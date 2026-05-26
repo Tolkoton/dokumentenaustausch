@@ -85,6 +85,7 @@ To inspect a hook: `cat .claude/hooks/<name>`. To temporarily disable: rename to
 
 @AGENTS.md
 
+- Autonomous continuation: PASS = silent continue; stop only on BLOCK, ESCALATE, or hard-gate boundary. See `.claude/skills/overseer/SKILL.md` § "Autonomous continuation after PASS".
 ## Overseer protocol
 
 - The Stop hook `.claude/hooks/overseer_stop.py` auto-triggers an overseer
