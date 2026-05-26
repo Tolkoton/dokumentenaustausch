@@ -370,17 +370,3 @@ correct your verdict is.
 
 No closing pleasantries.
 
-## Autonomous continuation after PASS
-
-After emitting `OVERSEER_PASS` verdict, do NOT stop and wait for owner input. Treat PASS as implicit "proceed to the next item in the slice plan". Continue immediately in subsequent turns.
-
-Stop only on:
-
-- `OVERSEER_BLOCK: <reason>` — halt, address the block before continuing
-- `OVERSEER_ESCALATE: <reason>` — halt, report to owner
-- Hard-gate boundary defined by the slice plan (e.g., G1/G2/G3/G4 in the standard slice template) — write the report per the slice's report-format template, then stop and wait for owner "proceed"
-- Genuine ambiguity not resolved by the slice artifact — raise with owner before guessing
-
-Per-unit `OVERSEER_PASS` is silent continuation. Per-gate report is explicit stop.
-
-The Stop hook guarantees recursion safety: after a verdict marker is emitted, the SHA-256 idempotency file + verdict-marker grep prevent re-fire on the immediately following turn — so autonomous continuation cannot loop the hook.
