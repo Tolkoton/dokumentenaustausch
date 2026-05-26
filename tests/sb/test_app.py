@@ -47,7 +47,16 @@ class _FakeClient:
         attach_returns: dict[str, Any] | None = None,
     ) -> None:
         self._docs = (
-            docs if docs is not None else [{"number": VGM_NUMBER, "id": VGM_GUID}]
+            docs
+            if docs is not None
+            else [
+                {
+                    "number": VGM_NUMBER,
+                    "id": VGM_GUID,
+                    "extension": "VGM",
+                    "is_binder": True,
+                }
+            ]
         )
         self._list_raises = list_raises
         # default = a valid Vorgangsmappe; override with a non-VGM doc to
@@ -62,11 +71,33 @@ class _FakeClient:
         self.list_documents_called = False
         self.get_document_called = False
 
-    def list_documents(self, *, top: int = 1000, skip: int = 0) -> list[dict[str, Any]]:
+    def list_documents(
+        self,
+        *,
+        filter: str | None = None,  # noqa: A002 — wire-level param name
+        top: int | None = None,
+        skip: int | None = None,
+    ) -> list[dict[str, Any]]:
         self.list_documents_called = True
         if self._list_raises is not None:
             raise self._list_raises
-        return self._docs if skip == 0 else []
+        # Simulate klardaten's server-side ``filter=number eq <N>``: the
+        # resolver passes one such filter and expects a 0- or 1-item
+        # match. Tests stocking ``_docs=[{"number": N, ...}]`` get the
+        # match by number; tests stocking ``_docs=[]`` get the empty
+        # not-found path. Unparseable filters fall through to the legacy
+        # paginated behavior so any leftover top/skip-using test keeps
+        # working until it is migrated.
+        if filter is not None:
+            prefix = "number eq "
+            if filter.startswith(prefix):
+                try:
+                    wanted = int(filter[len(prefix) :])
+                except ValueError:
+                    return []
+                return [d for d in self._docs if d.get("number") == wanted]
+            return []
+        return self._docs if (skip or 0) == 0 else []
 
     def get_document(self, guid: str) -> dict[str, Any]:
         self.get_document_called = True

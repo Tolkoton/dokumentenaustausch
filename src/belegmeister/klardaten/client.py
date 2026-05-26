@@ -69,32 +69,38 @@ class KlardatenClient:
             )
         return cast(dict[str, Any], data)
 
-    def list_documents(self, *, top: int = 1000, skip: int = 0) -> list[dict[str, Any]]:
-        """List documents from DATEV DMS, one page at a time.
+    def list_documents(
+        self,
+        *,
+        filter: str | None = None,  # noqa: A002 — wire-level param name
+        top: int | None = None,
+        skip: int | None = None,
+    ) -> list[dict[str, Any]]:
+        """List documents from DATEV DMS, optionally filtered server-side.
 
-        Wire call: ``GET /datevconnect/dms/v2/documents`` with
-        ``$top`` and ``$skip`` query params. The implementation is one
-        HTTP call's worth of responsibility; pagination orchestration
-        lives in ``belegmeister.datev.resolver.resolve_binder_guid_by_number``
-        because looping is the resolver's concern, not the client's.
+        Wire call: ``GET /datevconnect/dms/v2/documents`` with **plain
+        (non-``$``-prefixed)** OData params — ``filter``, ``top``, and
+        ``skip``. Only the params the caller supplies are sent; passing
+        no kwargs hits the endpoint bare.
 
-        klardaten quirk (ADR-0001): the server **ignores ``$top``** —
-        every page returns 1000 entries regardless of the requested
-        value. Only ``$skip`` paginates. Also: there is no server-side
-        filter; this endpoint cannot narrow results by ``number`` or
-        any other field.
+        klardaten wire-format finding (ADR-0003 — supersedes ADR-0001
+        on this point): the gateway honors OData ``filter``, ``top``,
+        and ``skip`` **without** the leading ``$``. The ``$``-prefixed
+        forms (``$filter``, ``$top``, ``$skip``) are silently ignored —
+        a 1000-row default page is returned regardless. The original
+        Slice-1 reading "no server-side filter exists" was the symptom
+        of sending the ignored ``$``-prefixed variant.
 
         Args:
-            top: ``$top`` query parameter. Currently a no-op
-                server-side; kept so a future server change can be
-                exercised without a signature break.
-            skip: ``$skip`` query parameter; advances the window by
-                ``skip`` records.
+            filter: OData filter expression sent as the ``filter`` query
+                param. Typical shape: ``"number eq <int>"``.
+            top: Max rows to return. Omit for the server default (1000).
+            skip: Number of rows to skip (offset pagination).
 
         Returns:
-            The page as a ``list`` of document records (each a
-            ``dict``, schema per ``get_document``). An empty list means
-            the listing is exhausted at that ``$skip``.
+            The result as a ``list`` of document records (each a
+            ``dict``, schema per ``get_document``). Empty list means
+            no matches under the filter, or pagination exhausted.
 
         Raises:
             httpx.HTTPStatusError: Non-2xx response.
@@ -103,11 +109,18 @@ class KlardatenClient:
             httpx.HTTPError: Other transport-level errors.
         """
         url = f"{self.base_url.rstrip('/')}/datevconnect/dms/v2/documents"
+        params: dict[str, Any] = {}
+        if filter is not None:
+            params["filter"] = filter
+        if top is not None:
+            params["top"] = top
+        if skip is not None:
+            params["skip"] = skip
         with httpx.Client(timeout=self.timeout) as client:
             response = client.get(
                 url,
                 headers=self._auth_headers(),
-                params={"$top": top, "$skip": skip},
+                params=params,
             )
             response.raise_for_status()
             data = response.json()

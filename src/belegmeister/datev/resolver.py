@@ -1,12 +1,14 @@
 """Resolve a DATEV Dokumentnummer (UI-visible integer) to a GUID.
 
-Kept deliberately separate from upload: "find the target" and "act on the
-target" are two concerns and should not be braided together.
+Single-call server-side filter. The klardaten gateway accepts OData
+semantics **without** the ``$`` prefix — ``filter=number eq <N>`` is
+honored; ``$filter=number eq <N>`` is silently ignored. The earlier
+page-walking implementation was built on the misread that direct
+lookup did not exist (ADR-0001, since superseded); the new ground
+truth is recorded in ADR-0003.
 
-The klardaten gateway's `$filter`/`?number=` syntax is undocumented and was
-empirically observed to be ignored (the server returns the unfiltered page).
-Until the right filter shape is found, the resolver paginates and scans
-in-memory. The `max_pages` bound keeps the worst case finite.
+Kept deliberately separate from upload: "find the target" and "act on
+the target" are two concerns and should not be braided together.
 """
 
 from __future__ import annotations
@@ -15,86 +17,64 @@ from typing import Any, Protocol
 
 
 class _DocLister(Protocol):
-    """Structural type for the document-listing capability."""
+    """Structural type for the server-side filter capability."""
 
-    def list_documents(self, *, top: int, skip: int) -> list[dict[str, Any]]: ...
+    def list_documents(
+        self,
+        *,
+        filter: str | None = ...,  # noqa: A002 — wire-level param name
+    ) -> list[dict[str, Any]]: ...
 
 
 def resolve_binder_guid_by_number(
     klardaten_client: _DocLister,
-    number: int,
-    *,
-    page_size: int = 1000,
-    max_pages: int = 3,
+    doknum: int,
 ) -> str | None:
-    """Resolve a DATEV Dokumentnummer (UI integer) to a klardaten document GUID.
+    """Resolve a DATEV Dokumentnummer (UI integer) to a klardaten GUID.
 
-    Pages through ``GET /datevconnect/dms/v2/documents`` via the injected
-    client's ``list_documents(top=, skip=)`` until a document with the
-    matching ``number`` field is found, the listing runs out, or the page
-    cap is reached. There is no server-side filter to lean on — see
-    ADR-0001 (``docs/adr/0001-resolver-perf-persisted-index.md``):
-    ``$filter=number eq X``, ``?number=X``, and by-number path routes are
-    all silently ignored by klardaten's documents endpoint, and ``$top``
-    is ignored too (the page is fixed at 1000). Settled empirically by
-    ``scripts/spike_direct_lookup_2026-05-19.py``; do not re-probe.
-
-    Worst-case behavior follows directly: a not-found result requires
-    walking ``page_size * max_pages`` records sequentially. With the
-    current bound the scan looks at up to 3 000 records (~3 s worst-case
-    on miss; ~1 s on hit when the target sits in the first page).
-
-    Trade-off accepted (owner decision 2026-05-21 after empirical spike
-    against live api.klardaten.com): VGM numbers in DATEV instances with
-    more than 3 000 documents that aren't in the first 3 page rotations
-    will yield a false-negative ``"nicht gefunden"``. Acceptable until
-    klardaten exposes a server-side number→GUID lookup. The persisted-
-    index alternative (see ADR-0001 + the ``Superseded`` section) was
-    rejected as over-engineered for the measured behavior.
+    One wire call: ``GET /datevconnect/dms/v2/documents?filter=number eq <doknum>``.
+    The server returns 0 or 1 matching record (numbers are unique).
+    A non-VGM hit yields ``None`` — the function refuses to surface a
+    GUID that ``upload_to_binder`` would then reject for not being a
+    Vorgangsmappe.
 
     Args:
         klardaten_client: Any object implementing
-            ``list_documents(*, top: int, skip: int) -> list[dict[str, Any]]``
+            ``list_documents(*, filter: str | None = ...) -> list[dict[str, Any]]``
             (the ``_DocLister`` Protocol). In production a
             ``KlardatenClient``; in tests a fake.
-        number: The Dokumentnummer the SB typed into the form (a
-            positive integer in DATEV's UI). Compared to each entry's
-            ``"number"`` field using ``==``.
-        page_size: ``$top`` value sent to klardaten; effectively
-            ignored by the server (response is always 1000 entries), but
-            kept as a parameter so a future server with real pagination
-            can be exercised without a signature change.
-        max_pages: Cap on how many pages to walk before giving up. With
-            the defaults the scan looks at up to 3 000 records — bounds
-            miss-latency to ~3 s on production while accepting the
-            false-negative trade-off above.
+        doknum: The Dokumentnummer the SB typed into the form (a
+            positive integer in DATEV's UI). Embedded into the OData
+            ``number eq <doknum>`` filter expression verbatim.
 
     Returns:
-        The matching document's ``id`` as a ``str`` (the GUID expected
-        by ``upload_to_binder`` and the resolver-using web surfaces),
-        or ``None`` when no document with the given number was seen
-        within the scan window. ``None`` is the "not found" signal the
-        caller renders as "VGM-Nummer ... wurde in DATEV nicht
-        gefunden".
+        The matching Vorgangsmappe's ``id`` as a ``str`` (the GUID
+        expected by ``upload_to_binder`` and the resolver-using web
+        surfaces). ``None`` when no document matches, or when the match
+        is not a Vorgangsmappe, or when the server response lacks a
+        usable string id. ``None`` is the "not found" signal the caller
+        renders as "VGM-Nummer ... wurde in DATEV nicht gefunden".
+
+    Raises:
+        ValueError: When the server returns more than one matching
+            document. Numbers are unique in DATEV, so >1 is a server
+            contract violation worth surfacing rather than silently
+            picking the first.
 
     Side effects:
-        Makes up to ``max_pages`` synchronous ``GET`` requests to
-        klardaten. Each call is bounded by the client's own per-request
-        timeout (the default ``KlardatenClient.timeout`` of 30 s); the
-        total wall-clock is unbounded by this function. No mutation, no
-        local I/O.
+        Makes one synchronous ``GET`` request to klardaten, bounded by
+        the client's per-request timeout (default 30 s). No mutation,
+        no local I/O.
     """
-    skip = 0
-    for _ in range(max_pages):
-        page = klardaten_client.list_documents(top=page_size, skip=skip)
-        if not page:
-            return None
-        for entry in page:
-            if entry.get("number") == number:
-                guid = entry.get("id")
-                if isinstance(guid, str) and guid:
-                    return guid
-        if len(page) < page_size:
-            return None
-        skip += page_size
-    return None
+    docs = klardaten_client.list_documents(filter=f"number eq {doknum}")
+    if not docs:
+        return None
+    if len(docs) > 1:
+        raise ValueError(f"Dokumentnummer {doknum} resolved to {len(docs)} items")
+    doc = docs[0]
+    if doc.get("extension") != "VGM" or not doc.get("is_binder"):
+        return None
+    guid = doc.get("id")
+    if not isinstance(guid, str) or not guid:
+        return None
+    return guid
