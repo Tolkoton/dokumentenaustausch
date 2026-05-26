@@ -1,4 +1,4 @@
-# ADR-0003: Klardaten Gateway accepts OData params without `$` prefix
+# ADR-0005: Klardaten Gateway accepts OData params without `$` prefix
 
 - **Status:** Accepted
 - **Date:** 2026-05-26
@@ -115,7 +115,7 @@ params, and only the ones the caller supplies (omit = omit).
   `fix(datev): rewrite resolve_binder_guid_by_number as single-call filter`
   (immediately preceding this ADR) ships the resolver rewrite, the
   client signature change, the test surface, and removes every
-  `$`-prefix reference from production source. ADR-0003 is the doc-side
+  `$`-prefix reference from production source. ADR-0005 is the doc-side
   record; the code is already on `master`.
 
 ## Why ADR-0001 is fully superseded

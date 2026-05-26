@@ -1,0 +1,128 @@
+{
+  "probe": "letter-id-stability-re-read",
+  "binder_guid": "4c83e94e-24e7-4866-809c-5e983ad7f485",
+  "fetched_at": "2026-05-26T10:40:47.262044+00:00",
+  "total_items": 22,
+  "letters_count": 17,
+  "letters": [
+    {
+      "name": "_request_letter_2026-05-15T082815Z.md",
+      "id": "1170210",
+      "document_file_id": 1152166,
+      "counter": 2,
+      "creation_date": "2026-05-15T08:28:16.056"
+    },
+    {
+      "name": "_request_letter_2026-05-15T102548Z.md",
+      "id": "1170229",
+      "document_file_id": 1152183,
+      "counter": 3,
+      "creation_date": "2026-05-15T10:25:49.056"
+    },
+    {
+      "name": "_request_letter_2026-05-19T094755Z.md",
+      "id": "1182125",
+      "document_file_id": 1162834,
+      "counter": 4,
+      "creation_date": "2026-05-19T09:47:55.603"
+    },
+    {
+      "name": "_request_letter_2026-05-19T095926Z.txt",
+      "id": "1182145",
+      "document_file_id": 1162841,
+      "counter": 5,
+      "creation_date": "2026-05-19T09:59:26.803"
+    },
+    {
+      "name": "_request_letter_2026-05-19T100429Z.txt",
+      "id": "1182149",
+      "document_file_id": 1162845,
+      "counter": 6,
+      "creation_date": "2026-05-19T10:04:29.710"
+    },
+    {
+      "name": "_request_letter_2026-05-21T133259Z.txt",
+      "id": "1184389",
+      "document_file_id": 1164016,
+      "counter": 7,
+      "creation_date": "2026-05-21T13:33:01.210"
+    },
+    {
+      "name": "_request_letter_2026-05-21T133729Z.txt",
+      "id": "1184390",
+      "document_file_id": 1164017,
+      "counter": 8,
+      "creation_date": "2026-05-21T13:37:30.496"
+    },
+    {
+      "name": "_request_letter_2026-05-21T134218Z.txt",
+      "id": "1184391",
+      "document_file_id": 1164018,
+      "counter": 9,
+      "creation_date": "2026-05-21T13:42:20.266"
+    },
+    {
+      "name": "_request_letter_2026-05-21T141140Z.txt",
+      "id": "1184442",
+      "document_file_id": 1164029,
+      "counter": 10,
+      "creation_date": "2026-05-21T14:11:41.426"
+    },
+    {
+      "name": "_request_letter_2026-05-26T040907Z.txt",
+      "id": "1185369",
+      "document_file_id": 1164506,
+      "counter": 11,
+      "creation_date": "2026-05-26T04:09:08.666"
+    },
+    {
+      "name": "_request_letter_2026-05-26T071747Z.txt",
+      "id": "1185489",
+      "document_file_id": 1164557,
+      "counter": 12,
+      "creation_date": "2026-05-26T07:17:49.640"
+    },
+    {
+      "name": "_request_letter_2026-05-26T072139Z.txt",
+      "id": "1185492",
+      "document_file_id": 1164560,
+      "counter": 13,
+      "creation_date": "2026-05-26T07:21:40.780"
+    },
+    {
+      "name": "_request_letter_2026-05-26T072224Z.txt",
+      "id": "1185494",
+      "document_file_id": 1164562,
+      "counter": 14,
+      "creation_date": "2026-05-26T07:22:25.813"
+    },
+    {
+      "name": "_request_letter_2026-05-26T072418Z.txt",
+      "id": "1185498",
+      "document_file_id": 1164566,
+      "counter": 15,
+      "creation_date": "2026-05-26T07:24:20.200"
+    },
+    {
+      "name": "_request_letter_2026-05-26T073250Z.txt",
+      "id": "1185511",
+      "document_file_id": 1164578,
+      "counter": 16,
+      "creation_date": "2026-05-26T07:32:51.766"
+    },
+    {
+      "name": "_request_letter_2026-05-26T074241Z.txt",
+      "id": "1185516",
+      "document_file_id": 1164583,
+      "counter": 17,
+      "creation_date": "2026-05-26T07:42:42.066"
+    },
+    {
+      "name": "_request_letter_2026-05-26T074656Z.txt",
+      "id": "1185519",
+      "document_file_id": 1164586,
+      "counter": 18,
+      "creation_date": "2026-05-26T07:46:57.680"
+    }
+  ]
+}

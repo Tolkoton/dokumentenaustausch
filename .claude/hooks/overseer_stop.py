@@ -22,10 +22,22 @@ TRIGGER — both signals required:
   2. tool signal:   in the current turn, an Edit/Write/MultiEdit on a `src/`
                     path AND a Bash command matching pytest|ruff|mypy.
 
-RECURSION GUARDS — any one suppresses the audit:
-  1. `stop_hook_active` true   — this Stop was itself caused by a hook block.
-  2. SHA-256 idempotency file  — this exact message already requested an audit.
-  3. OVERSEER verdict marker   — the audit already ran and produced a verdict.
+RECURSION GUARDS — per-branch, by design:
+  - Audit-request branch    — `.overseer/.last_audit_sha` SHA of last message
+                              that requested an audit; same-message re-fire
+                              is silent.
+  - PASS / CONTINUE branch  — `.overseer/.last_continue_sha` SHA of last
+                              OVERSEER_PASS message that produced a CONTINUE
+                              injection; same-message re-fire is silent.
+  - Halt markers (BLOCK / ESCALATE / ADR_REQUIRED / SLICE_AWAITING_OWNER /
+    SLICE_COMPLETE) silent-pass — owner takes over.
+
+  An earlier `stop_hook_active`-based "Guard 1" was removed because it
+  short-circuited BEFORE the per-branch SHA guards on hook-initiated turns
+  (audit-PASS turns and CONTINUE-driven UNIT turns both arrive with
+  `stop_hook_active=true`), making both injection branches unreachable in
+  the autonomous loop. The per-branch SHAs handle recursion safety for the
+  branches they cover.
 
 PHASE GUARD: `.overseer/state` containing `plan` suppresses the audit — the
 developer is designing, not completing units of work.
@@ -53,11 +65,15 @@ from typing import NoReturn
 UNIT_DONE_RE = re.compile(r"^[ \t]*=== UNIT \d+ COMPLETE ===[ \t]*$", re.MULTILINE)
 # An overseer verdict already emitted this turn — recursion guard 3.
 # Halt markers — owner takes over, hook silent-passes
-HALT_MARKER_RE = re.compile(r"OVERSEER_(?:BLOCK|ESCALATE|ADR_REQUIRED|SLICE_AWAITING_OWNER|SLICE_COMPLETE)")
+HALT_MARKER_RE = re.compile(
+    r"OVERSEER_(?:BLOCK|ESCALATE|ADR_REQUIRED|SLICE_AWAITING_OWNER|SLICE_COMPLETE)"
+)
 # Pass marker — hook re-injects "continue to next unit" (taskmaster pattern)
 PASS_MARKER_RE = re.compile(r"OVERSEER_PASS\b")
 # Legacy alias for backward compat — any verdict marker
-OVERSEER_MARKER_RE = re.compile(r"OVERSEER_(?:PASS|BLOCK|ESCALATE|ADR_REQUIRED|SLICE_AWAITING_OWNER|SLICE_COMPLETE)")
+OVERSEER_MARKER_RE = re.compile(
+    r"OVERSEER_(?:PASS|BLOCK|ESCALATE|ADR_REQUIRED|SLICE_AWAITING_OWNER|SLICE_COMPLETE)"
+)
 # A test / lint / type Bash command — one half of the tool signal.
 CHECK_CMD_RE = re.compile(r"\b(?:pytest|ruff|mypy)\b")
 # File-mutating tools — the other half of the tool signal.
@@ -233,26 +249,32 @@ def _record_audit(project_dir: Path, message: str) -> None:
 
 
 def main() -> NoReturn:
+    # NOTE — `stop_hook_active`-based Guard 1 was removed (see module
+    # docstring "RECURSION GUARDS"). It preempted the per-branch SHA
+    # idempotency on every hook-initiated turn — making both injection
+    # branches (audit-request, PASS→CONTINUE) unreachable in the
+    # autonomous loop. Per-branch SHAs at `.overseer/.last_audit_sha`
+    # and `.overseer/.last_continue_sha` are the design's intended
+    # recursion guards and are sufficient.
     dry_run = "--dry-run" in sys.argv[1:]
     envelope = _read_envelope()
-
-    # Guard 1: a hook-induced Stop — never recurse, even under --dry-run.
-    if envelope.get("stop_hook_active") is True:
-        _passthrough()
 
     if dry_run:
         _emit_block(DRY_RUN_REASON)
 
     message = _str_field(envelope, "last_assistant_message")
 
-    # Guard 3: an overseer verdict already landed this turn.
-        # Halt markers — owner takes over, hook silent-passes
+    # Halt markers — owner takes over, hook silent-passes.
     if HALT_MARKER_RE.search(message):
         _passthrough()
 
     # PASS marker — re-inject "continue to next unit" (taskmaster pattern: keep blocking until slice done)
     if PASS_MARKER_RE.search(message):
-        sha_file = Path(os.environ.get("CLAUDE_PROJECT_DIR", ".")) / ".overseer" / ".last_continue_sha"
+        sha_file = (
+            Path(os.environ.get("CLAUDE_PROJECT_DIR", "."))
+            / ".overseer"
+            / ".last_continue_sha"
+        )
         digest = _message_digest(message)
         try:
             if sha_file.read_text(encoding="utf-8").strip() == digest:
