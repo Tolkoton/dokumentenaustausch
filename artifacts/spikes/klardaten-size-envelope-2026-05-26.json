@@ -1,0 +1,42 @@
+{
+  "vgm_binder_guid": "4c83e94e-24e7-4866-809c-5e983ad7f485",
+  "vgm_number": 395357,
+  "started_at": "2026-05-27T08:24:02.860444+00:00",
+  "completed_at": "2026-05-27T08:25:38.722296+00:00",
+  "runs": [
+    {
+      "size_mb": 25,
+      "file_name": "_size_probe_25MB_1d2d52d1.pdf",
+      "status": 200,
+      "elapsed_s": 6.41,
+      "document_file_id": 1165222,
+      "structure_item_id": "1186282"
+    },
+    {
+      "size_mb": 50,
+      "file_name": "_size_probe_50MB_4ab129b4.pdf",
+      "status": 200,
+      "elapsed_s": 12.81,
+      "document_file_id": 1165223,
+      "structure_item_id": "1186283"
+    },
+    {
+      "size_mb": 100,
+      "file_name": "_size_probe_100MB_7e06104f.pdf",
+      "status": 200,
+      "elapsed_s": 25.38,
+      "document_file_id": 1165224,
+      "structure_item_id": "1186284"
+    },
+    {
+      "size_mb": 200,
+      "file_name": "_size_probe_200MB_80ba4d9b.pdf",
+      "status": 200,
+      "elapsed_s": 50.39,
+      "document_file_id": 1165225,
+      "structure_item_id": "1186285"
+    }
+  ],
+  "first_failure_size_mb": null,
+  "max_confirmed_mb": 200
+}

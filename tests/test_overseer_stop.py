@@ -13,8 +13,13 @@ The hook fires only when BOTH signals are present:
   * tool signal   — in the current turn, an Edit/Write/MultiEdit on a `src/`
                     path AND a Bash pytest/ruff/mypy command.
 
-Three recursion guards suppress it: the `stop_hook_active` flag, a SHA-256
-idempotency file, and an OVERSEER verdict marker already in the message.
+Recursion safety is per-branch by design: the audit-request branch is
+guarded by `.overseer/.last_audit_sha`; the OVERSEER_PASS → CONTINUE
+branch by `.overseer/.last_continue_sha`; halt-marker turns
+(BLOCK / ESCALATE / ADR_REQUIRED / SLICE_AWAITING_OWNER / SLICE_COMPLETE)
+silent-pass because the owner takes over. An earlier `stop_hook_active`
+short-circuit was removed — it preempted the per-branch SHAs on every
+hook-initiated turn, breaking the autonomous loop (see test_2 below).
 
 These tests drive the hook as a subprocess with a synthetic Stop envelope and a
 fixture transcript — the same way Claude Code invokes it. Every test is
@@ -144,26 +149,65 @@ def test_1_hook_script_exists_and_is_executable() -> None:
     assert os.access(HOOK, os.X_OK), f"hook script not executable: {HOOK}"
 
 
-def test_2_stop_hook_active_short_circuits(
+def test_2_stop_hook_active_does_not_preempt_named_branches(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Recursion guard 1: `stop_hook_active=true` means this Stop event was
-    itself caused by a hook block — pass silently even with full triggers, or
-    the hook recurses forever."""
+    """`stop_hook_active=true` arrives on every hook-initiated turn — both
+    the audit-PASS turn (triggered by the prior audit-request block) AND the
+    next-UNIT turn (triggered by the prior CONTINUE block). It MUST NOT
+    preempt the audit-request and PASS-continuation branches, or the
+    autonomous loop stalls one step in.
+
+    Recursion safety lives in the per-branch SHA files
+    (`.last_audit_sha`, `.last_continue_sha`); see test_7 and test_10
+    for the SHA-idempotency contract.
+
+    Regression history: an earlier `stop_hook_active`-based "Guard 1"
+    short-circuited BEFORE the per-branch SHA guards, making both
+    injection branches unreachable on hook-initiated turns. Empirical
+    repro: with Guard 1 in place, this test's audit-fire and PASS-fire
+    sub-cases both got silent passthrough; with Guard 1 removed, both
+    fire their intended block decisions on the first invocation.
+    """
     monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(tmp_path))
     transcript = write_transcript(
         tmp_path / "t.jsonl",
         [("Edit", "src/belegmeister/foo.py"), ("Bash", "uv run pytest")],
     )
-    payload = base_payload(
+
+    # Sub-case A: sentinel + tool signal under stop_hook_active=true
+    # → audit-request injected. Recursion guard is `.last_audit_sha`
+    # (covered by test_7), NOT the removed Guard 1.
+    audit_payload = base_payload(
         tmp_path,
         last_assistant_message=f"All done.\n{SENTINEL}",
         transcript=transcript,
         stop_hook_active=True,
     )
-    result = run_hook(payload)
-    assert result.returncode == 0, result.stderr
-    assert result.stdout.strip() == ""
+    audit_result = run_hook(audit_payload)
+    assert audit_result.returncode == 0, audit_result.stderr
+    audit_decision: dict[str, object] = json.loads(audit_result.stdout)
+    assert audit_decision["decision"] == "block"
+    audit_reason = audit_decision["reason"]
+    assert isinstance(audit_reason, str)
+    assert "OVERSEER_REQUEST" in audit_reason
+
+    # Sub-case B: OVERSEER_PASS marker under stop_hook_active=true
+    # → CONTINUE injected. Recursion guard is `.last_continue_sha`
+    # (covered by test_10), NOT the removed Guard 1.
+    pass_payload = base_payload(
+        tmp_path,
+        last_assistant_message="Audit done.\nOVERSEER_PASS",
+        transcript=transcript,
+        stop_hook_active=True,
+    )
+    pass_result = run_hook(pass_payload)
+    assert pass_result.returncode == 0, pass_result.stderr
+    pass_decision: dict[str, object] = json.loads(pass_result.stdout)
+    assert pass_decision["decision"] == "block"
+    pass_reason = pass_decision["reason"]
+    assert isinstance(pass_reason, str)
+    assert "OVERSEER_PASS recorded" in pass_reason
 
 
 def test_3_overseer_marker_short_circuits(

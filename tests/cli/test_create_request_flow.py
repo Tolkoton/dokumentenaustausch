@@ -114,14 +114,65 @@ def test_RC1_happy_path_uploads_letter_and_returns_magic_link_url() -> None:
     token = url.removeprefix(f"{BASE_URL}/r/")
     assert "." in token  # payload.sig
 
-    # Token round-trip: payload encodes the vgm_id and exp
+    # Token round-trip: payload encodes vgm_id, letter_id (from
+    # UploadResult.document_id), and exp. Fake's default attach_result
+    # is {"id": "structure-item-xyz"} so letter_id mirrors that.
     payload_b64 = token.split(".", 1)[0]
     padding = "=" * (-len(payload_b64) % 4)
     payload = json.loads(base64.urlsafe_b64decode(payload_b64 + padding))
     assert payload == {
         "vgm_id": args.vgm_id,
+        "letter_id": "structure-item-xyz",
         "exp": int(args.expires_at.timestamp()),
     }
+
+
+def test_mint_threads_upload_result_id_into_token_letter_id() -> None:
+    """Seam-2 round-trip (slice token-instance-binding): the structure-item
+    id returned by `upload_to_binder` (i.e. `UploadResult.document_id`)
+    MUST be the value of `letter_id` in the minted token's payload.
+
+    Anti-pattern this catches: assertions on call-shape (`generate_token
+    was called`) PASS even with the wrong arg threaded. The discipline is
+    to verify what survived the encode/decode cycle — round-trip via
+    `verify_token`, not on what entered the encoder.
+
+    Coverage: distinguishes "wrong field of UploadResult threaded"
+    (e.g. someone wires `args.vgm_id` instead, or a stale local) and
+    "right field, but the actual minted token's payload doesn't match
+    it" (schema drift)."""
+    distinctive_struct_id = "STRUCT_ID_FOR_SEAM_2_TEST_42"
+    args = _make_args()
+    client = _FakeBinderClient(attach_result={"id": distinctive_struct_id})
+
+    url = run_create_request(
+        args,
+        klardaten_client=client,
+        magic_link_secret=SECRET,
+        magic_link_base_url=BASE_URL,
+        now=NOW,
+    )
+
+    token = url.removeprefix(f"{BASE_URL}/r/")
+    # Verify-side round-trip — NOT a hand-rolled b64 decode, because we
+    # want the contract to be "the actual verify_token function returns
+    # a payload whose letter_id matches", not "the bytes happen to
+    # contain the substring." Imports kept local to keep this test's
+    # intent self-contained.
+    from belegmeister.magic_link.token import verify_token
+
+    payload = verify_token(token=token, secret=SECRET, now=NOW)
+    assert payload.letter_id == distinctive_struct_id, (
+        f"slice exit-criterion #2 (Seam-2): expected letter_id "
+        f"{distinctive_struct_id!r}, got {payload.letter_id!r}. "
+        "Mint side did not thread UploadResult.document_id into "
+        "generate_token(letter_id=...)."
+    )
+    # Defensive secondary assertion: the OTHER payload fields are also
+    # what we expect, so a regression that swaps letter_id with vgm_id
+    # (both strings, same type) is caught.
+    assert payload.vgm_id == args.vgm_id
+    assert payload.exp == int(args.expires_at.timestamp())
 
 
 def test_RC5_invalid_upload_target_bubbles_up_with_no_attach() -> None:

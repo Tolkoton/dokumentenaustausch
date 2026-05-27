@@ -309,24 +309,33 @@ def _collect_form_input(
 def _datev_resolve_banner(exc: httpx.HTTPError) -> str:
     """Classify a resolve-stage httpx failure into a CURATED banner.
 
-    `httpx.HTTPError` is the base of both `RequestError` (down/timeout)
-    and `HTTPStatusError` (4xx AND 5xx — `raise_for_status`). The spec's
-    "nicht erreichbar / retry" wording is honest only for transient
-    failures. A 4xx (esp. 401/403) is a credentials/configuration
-    problem the SB cannot fix by retrying — it gets a distinct,
-    non-retry-implying message. 5xx / RequestError / other (e.g.
-    `DecodingError`) fall into the transient bucket."""
+    Three classes (revised 2026-05-27 — pre-existing UX defect fix,
+    out-of-slice from submit-handler):
+
+    - **HTTP 4xx**: realistic cause on the VGM-lookup path is invalid
+      user input — Dokumentnummer out of range / not in DATEV /
+      malformed filter value. Blaming credentials here is misleading.
+      One actionable message covers all 4xx codes ("check the number
+      you typed"); don't try to distinguish 400 from 404 — both mean
+      "your input didn't lead to a valid VGM".
+    - **HTTP 5xx**: server-side problem at the gateway. Credentials
+      guidance with the status code surfaced for SB / on-call
+      diagnosis (a 5xx is often indistinguishable from a credentials
+      / proxy-config issue from the SB's side).
+    - **RequestError / other** (timeout, connection refused,
+      `DecodingError`): same credentials-guidance message but no
+      HTTP code to interpolate.
+    """
     if isinstance(exc, httpx.HTTPStatusError):
         code = exc.response.status_code
         if 400 <= code < 500:
+            return "Ungültige VGM-Nummer. Bitte überprüfen Sie die Dokumentnummer."
+        if 500 <= code < 600:
             return (
                 f"DATEV-Zugriff fehlgeschlagen (HTTP {code}). Bitte "
                 f"Zugangsdaten und Konfiguration prüfen."
             )
-    return (
-        "DATEV ist derzeit nicht erreichbar oder antwortet fehlerhaft. "
-        "Bitte versuchen Sie es später erneut."
-    )
+    return "DATEV-Zugriff fehlgeschlagen. Bitte Zugangsdaten und Konfiguration prüfen."
 
 
 def _parse_vgm_number(entered: str) -> int:

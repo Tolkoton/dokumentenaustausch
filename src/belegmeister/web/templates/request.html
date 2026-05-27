@@ -16,13 +16,13 @@
       <div class="whitespace-pre-wrap break-words text-sm text-slate-700 bg-slate-50 border border-slate-200 rounded p-4">{{ body }}</div>
     </section>
 
-    <form action="/r/{{ token }}/submit" method="POST" enctype="multipart/form-data" class="space-y-5">
+    <form id="submit-form" action="/r/{{ token }}/submit" method="POST" enctype="multipart/form-data" class="space-y-5">
       {% if questions %}
       <section id="questions-block" class="space-y-4">
         {% for q in questions %}
         <div>
           <label for="answer-{{ loop.index0 }}" class="block text-sm font-medium text-slate-700 mb-1">{{ q }}</label>
-          <input id="answer-{{ loop.index0 }}" name="answer_{{ loop.index0 }}" type="text"
+          <input id="answer-{{ loop.index0 }}" name="answer_{{ loop.index0 }}" type="text" required
                  class="w-full border border-slate-300 rounded p-2 text-sm">
         </div>
         {% endfor %}
@@ -35,7 +35,7 @@
         </label>
         <div class="border-2 border-dashed border-slate-300 rounded-lg p-8 text-center text-slate-500">
           Dateien hierher ziehen oder auswählen
-          <input type="file" name="files" multiple required
+          <input type="file" name="files" multiple
                  class="block w-full mt-3 text-sm">
         </div>
       </div>
@@ -48,11 +48,49 @@
                   class="w-full border border-slate-300 rounded p-2 text-sm"></textarea>
       </div>
 
-      <button type="submit"
+      <button id="submit-button" type="submit"
               class="bg-slate-800 text-white px-5 py-2 rounded hover:bg-slate-700 disabled:opacity-50">
         Senden
       </button>
     </form>
+    <script>
+      // lockSubmit: disable the submit button on first click so a
+      // same-tab double-click cannot produce two POSTs (ADR-0006
+      // defense-in-depth — the in-binder replay check is the second
+      // line, covering deliberate-replay paths). One-tab realistic case
+      // is what this guards.
+      (function lockSubmit() {
+        var form = document.getElementById("submit-form");
+        var btn = document.getElementById("submit-button");
+        if (!form || !btn) { return; }
+        form.addEventListener("submit", function () {
+          btn.disabled = true;
+        });
+      })();
+      // localizeRequiredMessage: override the browser's default English
+      // "Please fill out this field" tooltip on HTML5 required-field
+      // validation. The browser picks its locale from system settings;
+      // the rest of the page is German, so the message must match
+      // (formal "Sie" form to mirror "Bitte überprüfen Sie ..." etc.).
+      // setCustomValidity gates the message; the input listener clears
+      // it so the field re-validates after the Mandant types.
+      (function localizeRequiredMessage() {
+        var msg = "Bitte füllen Sie dieses Feld aus.";
+        var fields = document.querySelectorAll(
+          "input[required], textarea[required]"
+        );
+        fields.forEach(function (el) {
+          el.addEventListener("invalid", function () {
+            if (!el.value || !el.value.trim()) {
+              el.setCustomValidity(msg);
+            }
+          });
+          el.addEventListener("input", function () {
+            el.setCustomValidity("");
+          });
+        });
+      })();
+    </script>
   </main>
 </body>
 </html>

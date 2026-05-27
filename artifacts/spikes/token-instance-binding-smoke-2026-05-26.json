@@ -1,0 +1,57 @@
+{
+  "slice": "token-instance-binding",
+  "smoke_id": "24a315c5",
+  "started_at": "2026-05-26T12:20:26.916145+00:00",
+  "completed_at": "2026-05-26T12:20:28.346495+00:00",
+  "vgm_number": 395357,
+  "vgm_guid": "4c83e94e-24e7-4866-809c-5e983ad7f485",
+  "letters_created": [
+    {
+      "role": "L1",
+      "marker": "SMOKE_L1_24a315c5",
+      "url": "https://app.belegmeister.example.com/r/eyJleHAiOjE3Nzk4ODQ0MjYsImxldHRlcl9pZCI6IjExODU4NDkiLCJ2Z21faWQiOiI0YzgzZTk0ZS0yNGU3LTQ4NjYtODA5Yy01ZTk4M2FkN2Y0ODUifQ.XUdHDKbs77o9Z518D94rXRlKVfs54F_UY1qV2O6CiYQ",
+      "letter_id": "1185849",
+      "exp_unix": 1779884426
+    },
+    {
+      "role": "L2",
+      "marker": "SMOKE_L2_24a315c5",
+      "url": "https://app.belegmeister.example.com/r/eyJleHAiOjE3Nzk4ODQ0MjcsImxldHRlcl9pZCI6IjExODU4NTAiLCJ2Z21faWQiOiI0YzgzZTk0ZS0yNGU3LTQ4NjYtODA5Yy01ZTk4M2FkN2Y0ODUifQ.oFhYqnQiRAiyauxjZgt1mhXrpm9jwJhMY0VTSXQcp7Q",
+      "letter_id": "1185850",
+      "exp_unix": 1779884427
+    }
+  ],
+  "http_responses": [
+    {
+      "token_role": "T1",
+      "status": 200,
+      "body_len": 1893
+    },
+    {
+      "token_role": "T2",
+      "status": 200,
+      "body_len": 1893
+    }
+  ],
+  "cross_assertions": {
+    "L1_marker_in_T1_body": true,
+    "L2_marker_in_T2_body": true,
+    "L2_marker_NOT_in_T1_body": true,
+    "L1_marker_NOT_in_T2_body": true
+  },
+  "cli_payload_sanity": {
+    "T1_payload_fields": [
+      "exp",
+      "letter_id",
+      "vgm_id"
+    ],
+    "T2_payload_fields": [
+      "exp",
+      "letter_id",
+      "vgm_id"
+    ],
+    "letter_ids_distinct": true,
+    "vgm_ids_both_match_target": true
+  },
+  "overall_pass": true
+}

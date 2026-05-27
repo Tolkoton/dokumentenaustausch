@@ -30,9 +30,15 @@ def _b64url_decode(s: str) -> bytes:
 
 def test_TG1_generate_returns_two_b64_segments_with_payload_fields() -> None:
     vgm_id = "11111111-1111-1111-1111-111111111111"
+    letter_id = "1185519"
     expires_at = datetime(2030, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
 
-    token = generate_token(vgm_id=vgm_id, expires_at=expires_at, secret=SECRET)
+    token = generate_token(
+        vgm_id=vgm_id,
+        letter_id=letter_id,
+        expires_at=expires_at,
+        secret=SECRET,
+    )
 
     assert isinstance(token, str)
     parts = token.split(".")
@@ -43,6 +49,7 @@ def test_TG1_generate_returns_two_b64_segments_with_payload_fields() -> None:
     decoded_payload = json.loads(_b64url_decode(payload_b64))
     assert decoded_payload == {
         "vgm_id": vgm_id,
+        "letter_id": letter_id,
         "exp": int(expires_at.timestamp()),
     }
 
@@ -53,10 +60,15 @@ def test_TG2_two_calls_with_identical_args_produce_identical_token() -> None:
     HMAC-SHA256 is deterministic by construction; this test pins that
     contract at the module surface."""
     vgm_id = "22222222-2222-2222-2222-222222222222"
+    letter_id = "1185492"
     expires_at = datetime(2030, 6, 15, 8, 30, 0, tzinfo=timezone.utc)
 
-    t1 = generate_token(vgm_id=vgm_id, expires_at=expires_at, secret=SECRET)
-    t2 = generate_token(vgm_id=vgm_id, expires_at=expires_at, secret=SECRET)
+    t1 = generate_token(
+        vgm_id=vgm_id, letter_id=letter_id, expires_at=expires_at, secret=SECRET
+    )
+    t2 = generate_token(
+        vgm_id=vgm_id, letter_id=letter_id, expires_at=expires_at, secret=SECRET
+    )
 
     assert t1 == t2
 
@@ -66,13 +78,18 @@ def test_TV1_round_trip_returns_same_payload() -> None:
     TokenPayload. Forces a real HMAC implementation (placeholder sig
     cannot survive this test)."""
     vgm_id = "33333333-3333-3333-3333-333333333333"
+    letter_id = "1184442"
     expires_at = datetime(2030, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
     now = expires_at - timedelta(days=7)  # comfortably before expiry
 
-    token = generate_token(vgm_id=vgm_id, expires_at=expires_at, secret=SECRET)
+    token = generate_token(
+        vgm_id=vgm_id, letter_id=letter_id, expires_at=expires_at, secret=SECRET
+    )
     payload = verify_token(token=token, secret=SECRET, now=now)
 
-    assert payload == TokenPayload(vgm_id=vgm_id, exp=int(expires_at.timestamp()))
+    assert payload == TokenPayload(
+        vgm_id=vgm_id, letter_id=letter_id, exp=int(expires_at.timestamp())
+    )
 
 
 def test_TV2_expired_token_raises_invalid_token() -> None:
@@ -80,7 +97,12 @@ def test_TV2_expired_token_raises_invalid_token() -> None:
     expires_at = datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
     now = expires_at + timedelta(seconds=1)  # one second past expiry
 
-    token = generate_token(vgm_id=vgm_id, expires_at=expires_at, secret=SECRET)
+    token = generate_token(
+        vgm_id=vgm_id,
+        letter_id="1185369",
+        expires_at=expires_at,
+        secret=SECRET,
+    )
 
     with pytest.raises(InvalidToken) as exc:
         verify_token(token=token, secret=SECRET, now=now)
@@ -92,7 +114,12 @@ def test_TV2_now_equal_to_exp_is_expired() -> None:
     vgm_id = "55555555-5555-5555-5555-555555555555"
     expires_at = datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
 
-    token = generate_token(vgm_id=vgm_id, expires_at=expires_at, secret=SECRET)
+    token = generate_token(
+        vgm_id=vgm_id,
+        letter_id="1185489",
+        expires_at=expires_at,
+        secret=SECRET,
+    )
 
     with pytest.raises(InvalidToken) as exc:
         verify_token(token=token, secret=SECRET, now=expires_at)
@@ -105,7 +132,12 @@ def test_TV3_wrong_secret_raises_signature_mismatch() -> None:
     now = expires_at - timedelta(days=1)
     other_secret = "b" * 48
 
-    token = generate_token(vgm_id=vgm_id, expires_at=expires_at, secret=SECRET)
+    token = generate_token(
+        vgm_id=vgm_id,
+        letter_id="1185494",
+        expires_at=expires_at,
+        secret=SECRET,
+    )
 
     with pytest.raises(InvalidToken) as exc:
         verify_token(token=token, secret=other_secret, now=now)
@@ -191,7 +223,11 @@ def test_TV5_payload_vgm_id_wrong_type_raises() -> None:
 
 def test_TV5_payload_exp_wrong_type_raises() -> None:
     now = datetime(2026, 5, 15, 12, 0, 0, tzinfo=timezone.utc)
-    token = _sign_test_payload({"vgm_id": "abc", "exp": "soon"})
+    # `letter_id` included so validation reaches the `exp` check
+    # (decode order is vgm_id → letter_id → exp).
+    token = _sign_test_payload(
+        {"vgm_id": "abc", "letter_id": "some-letter", "exp": "soon"}
+    )
     with pytest.raises(InvalidToken) as exc:
         verify_token(token=token, secret=SECRET, now=now)
     assert exc.value.reason is InvalidTokenReason.MALFORMED
@@ -205,3 +241,78 @@ def test_TV5_payload_is_array_not_object_raises() -> None:
         verify_token(token=token, secret=SECRET, now=now)
     assert exc.value.reason is InvalidTokenReason.MALFORMED
     assert "payload" in exc.value.detail
+
+
+def test_TV5_payload_missing_letter_id_raises() -> None:
+    """Schema coverage: a sig-valid {vgm_id, exp}-only payload (no
+    letter_id) is rejected as MALFORMED. Same shape as the old pre-slice
+    wire format; this test also serves as the no-backwards-compat lockin
+    (see test_old_vgm_only_token_rejects_as_malformed_under_new_schema)."""
+    now = datetime(2026, 5, 15, 12, 0, 0, tzinfo=timezone.utc)
+    token = _sign_test_payload(
+        {"vgm_id": "abc", "exp": int((now + timedelta(days=1)).timestamp())}
+    )
+    with pytest.raises(InvalidToken) as exc:
+        verify_token(token=token, secret=SECRET, now=now)
+    assert exc.value.reason is InvalidTokenReason.MALFORMED
+    assert "letter_id" in exc.value.detail
+
+
+def test_TV5_payload_letter_id_wrong_type_raises() -> None:
+    now = datetime(2026, 5, 15, 12, 0, 0, tzinfo=timezone.utc)
+    token = _sign_test_payload(
+        {
+            "vgm_id": "abc",
+            "letter_id": 123,  # int, not str
+            "exp": int((now + timedelta(days=1)).timestamp()),
+        }
+    )
+    with pytest.raises(InvalidToken) as exc:
+        verify_token(token=token, secret=SECRET, now=now)
+    assert exc.value.reason is InvalidTokenReason.MALFORMED
+    assert "letter_id" in exc.value.detail
+
+
+def test_TV5_payload_letter_id_empty_string_raises() -> None:
+    """An empty-string letter_id is no identity at all — same rejection
+    class as a missing field. Stops the schema-loosening regression
+    pattern where a `letter_id: str = ""` default sneaks past type
+    checking but breaks downstream selection."""
+    now = datetime(2026, 5, 15, 12, 0, 0, tzinfo=timezone.utc)
+    token = _sign_test_payload(
+        {
+            "vgm_id": "abc",
+            "letter_id": "",
+            "exp": int((now + timedelta(days=1)).timestamp()),
+        }
+    )
+    with pytest.raises(InvalidToken) as exc:
+        verify_token(token=token, secret=SECRET, now=now)
+    assert exc.value.reason is InvalidTokenReason.MALFORMED
+    assert "letter_id" in exc.value.detail
+
+
+def test_old_vgm_only_token_rejects_as_malformed_under_new_schema() -> None:
+    """Slice exit-criterion #4: no backwards-compat with the pre-slice
+    `{vgm_id, exp}` token shape. An explicitly-constructed old-format
+    token (sig-valid, but missing `letter_id`) must reject with
+    `InvalidTokenReason.MALFORMED` and a reason mentioning `letter_id`.
+
+    Why this is its own test (vs. relying on TV5_payload_missing_letter_id):
+    this one encodes the *intent* of the Phase-1 decision into the test
+    suite — a future contributor reading the test name learns that the
+    old shape is intentionally rejected (not a bug to fix by adding a
+    default). Catches the regression pattern of a `letter_id: str = ""`
+    default sneaking in under schema-loosening pressure."""
+    vgm_id = "old-format-vgm-77777777"
+    now = datetime(2026, 5, 15, 12, 0, 0, tzinfo=timezone.utc)
+    old_payload = {
+        "vgm_id": vgm_id,
+        "exp": int((now + timedelta(days=1)).timestamp()),
+    }
+    token = _sign_test_payload(old_payload)
+
+    with pytest.raises(InvalidToken) as exc:
+        verify_token(token=token, secret=SECRET, now=now)
+    assert exc.value.reason is InvalidTokenReason.MALFORMED
+    assert "letter_id" in exc.value.detail

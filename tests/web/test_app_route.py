@@ -21,6 +21,9 @@ from belegmeister.web.app import app, get_letter_source, get_now, get_secret
 SECRET = "w" * 48
 NOW = datetime(2026, 5, 15, 12, 0, 0, tzinfo=timezone.utc)
 VGM = "3bf17a53-42ca-4a03-9275-213bd1c6b263"
+# Default fixture letter's structure-item `id`; mirrored in `_valid_token`'s
+# default so RT1 happy-path remains green under id-match selection.
+LETTER_ID = "1170198"
 
 # Wire-format `request/v1` payload — after Step 0, `resolve_request_view`
 # parses the downloaded bytes before producing the `RequestView`.
@@ -72,7 +75,7 @@ class _FakeSource:
                     "type": 1,
                     "counter": 2,
                     "document_file_id": 1152156,
-                    "id": "1170198",
+                    "id": LETTER_ID,
                 }
             ]
         )
@@ -84,9 +87,24 @@ class _FakeSource:
     def download_document_file(self, document_file_id: int) -> bytes:
         return self._files[document_file_id]
 
+    def attach_file_to_binder(
+        self, *, binder_guid: str, file_name: str, file_bytes: bytes
+    ) -> dict[str, Any]:
+        # GET-side tests never write. Raise so a refactor that
+        # accidentally invokes the write path from a GET test surfaces
+        # loudly.
+        raise AssertionError(
+            "attach_file_to_binder unexpected on GET-side LetterSource fake"
+        )
+
 
 def _valid_token() -> str:
-    return generate_token(vgm_id=VGM, expires_at=NOW + timedelta(days=3), secret=SECRET)
+    return generate_token(
+        vgm_id=VGM,
+        letter_id=LETTER_ID,
+        expires_at=NOW + timedelta(days=3),
+        secret=SECRET,
+    )
 
 
 def _client(src: _FakeSource) -> TestClient:
@@ -122,11 +140,51 @@ def test_RT1_valid_token_renders_200_with_letter_and_form() -> None:
     assert 'name="response"' in body
 
 
+def test_get_form_renders_lock_submit_js() -> None:
+    """Slice submit-handler UNIT 2 — pin lockSubmit JS presence.
+
+    Per Phase 1 (in-scope decision) + ADR-0006 defense-in-depth, the
+    request.html template MUST include the lockSubmit JS that disables
+    the submit button on first click. Without it, a same-tab
+    double-click can produce two POSTs before the in-binder replay
+    check fires (the realistic 99% TOCTOU case the ADR explicitly
+    relies on the JS to cover).
+
+    Browser-driver tests for the actual lock behaviour are infeasible
+    (no infra). This pin verifies the JS substring is present in the
+    rendered HTML — catches the "JS was never added" regression
+    cheaply. Located adjacent to :125 form-action pin for visual
+    locality of "what does the form actually contain" assertions.
+    """
+    token = _valid_token()
+    client = _client(_FakeSource())
+
+    r = client.get(f"/r/{token}")
+
+    assert r.status_code == 200
+    body = r.text
+    # The JS function name + the submit form id + the submit button id
+    # must all be present (defense against partial-deletion regressions).
+    assert "lockSubmit" in body
+    assert 'id="submit-form"' in body
+    assert 'id="submit-button"' in body
+    # Localized HTML5 required-field validation message. The browser's
+    # default tooltip is locale-dependent (English on EN-locale boxes);
+    # the SB / Mandant UI is German throughout, so the page MUST ship
+    # the German custom-validity message. Drift detector against a
+    # partial-revert of the localizeRequiredMessage IIFE.
+    assert "localizeRequiredMessage" in body
+    assert "Bitte füllen Sie dieses Feld aus." in body
+
+
 def test_RT2_invalid_token_404_generic_no_disclosure_structured_log(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     forged = generate_token(
-        vgm_id=VGM, expires_at=NOW + timedelta(days=3), secret="OTHER" * 8
+        vgm_id=VGM,
+        letter_id="any-test-letter-id",
+        expires_at=NOW + timedelta(days=3),
+        secret="OTHER" * 8,
     )
     client = _client(_FakeSource())
 

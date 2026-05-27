@@ -1,0 +1,50 @@
+{
+  "vgm_binder_guid": "4c83e94e-24e7-4866-809c-5e983ad7f485",
+  "vgm_number": 395357,
+  "completed_at": "2026-05-27T09:40:19.571238+00:00",
+  "uploaded": {
+    "file_name": "_a9_probe_f2c2b29f.pdf",
+    "document_file_id": 1165262,
+    "structure_item_id": "1186381",
+    "elapsed_s": 0.59
+  },
+  "structure_item_delete": {
+    "status": 404,
+    "response_body_excerpt": "",
+    "elapsed_s": 0.1,
+    "error_class": null
+  },
+  "document_file_delete": {
+    "status": 404,
+    "response_body_excerpt": "",
+    "elapsed_s": 0.78,
+    "error_class": null
+  },
+  "verified_absent_from_list": false,
+  "double_delete_structure_item": {
+    "status": 404,
+    "response_body_excerpt": "",
+    "elapsed_s": 0.11,
+    "error_class": null
+  },
+  "double_delete_document_file": {
+    "status": 404,
+    "response_body_excerpt": "",
+    "elapsed_s": 0.11,
+    "error_class": null
+  },
+  "nonexistent_delete_structure_item": {
+    "status": 404,
+    "response_body_excerpt": "",
+    "elapsed_s": 0.1,
+    "error_class": null
+  },
+  "nonexistent_delete_document_file": {
+    "status": 404,
+    "response_body_excerpt": "",
+    "elapsed_s": 0.11,
+    "error_class": null
+  },
+  "supports_all_or_nothing_rollback": false,
+  "notes": "DELETE path NOT clean; D6 must fall back to best-effort."
+}

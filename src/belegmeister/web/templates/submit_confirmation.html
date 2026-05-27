@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Belegmeister — Bestätigung</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-100 min-h-screen py-10">
+  <main class="max-w-2xl mx-auto bg-white rounded-xl shadow p-8">
+    {% if banner == "already_submitted" %}
+      <h1 class="text-xl font-semibold text-slate-800 mb-4">
+        Bereits eingereicht
+      </h1>
+      <p class="text-sm text-slate-700">
+        Sie haben diese Anfrage bereits eingereicht. Ihre Antworten und
+        Dateien sind beim Steuerberater eingegangen.
+      </p>
+    {% elif banner == "partial_success" %}
+      <h1 class="text-xl font-semibold text-slate-800 mb-4">
+        Teilweise empfangen
+      </h1>
+      <p class="text-sm text-slate-700">
+        Es wurden {{ n_succeeded }} von {{ n_total }} Dateien erfolgreich
+        hochgeladen. Bitte kontaktieren Sie Ihre Steuerberatung, um die
+        fehlenden Dateien nachzureichen.
+      </p>
+    {% else %}
+      <h1 class="text-xl font-semibold text-slate-800 mb-4">
+        Vielen Dank
+      </h1>
+      <p class="text-sm text-slate-700">
+        Ihre Antworten und Dateien wurden empfangen.
+      </p>
+    {% endif %}
+  </main>
+</body>
+</html>

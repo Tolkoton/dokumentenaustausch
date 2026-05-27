@@ -640,34 +640,56 @@ def test_B10_every_echoed_surface_is_html_escaped() -> None:
 _REQ = __import__("httpx").Request("GET", "https://api.klardaten.com/documents")
 
 
+# Banner taxonomy (revised 2026-05-27 — pre-existing UX defect fix,
+# out-of-slice from submit-handler):
+#
+#   - HTTP 4xx → "Ungültige VGM-Nummer ..."        (bad input)
+#   - HTTP 5xx → "DATEV-Zugriff fehlgeschlagen (HTTP {code}) ..."
+#                                                  (infrastructure + code)
+#   - RequestError / timeout / other → "DATEV-Zugriff fehlgeschlagen ..."
+#                                                  (infrastructure, no code)
+#
+# Was: 4xx got "DATEV-Zugriff... Zugangsdaten" (misleading — blamed
+# credentials when realistic 4xx cause is bad input); 5xx + Request-
+# Error got "nicht erreichbar... später erneut" (correct in spirit
+# but the new spec unifies infrastructure messaging on the
+# credentials-guidance template). The "nicht erreichbar" copy is
+# retired by this revision.
+
+
 @pytest.mark.parametrize(
     ("exc", "expect_present", "expect_absent"),
     [
-        # transient: connection refused (RequestError) -> retry-implying
+        # RequestError (connection refused / timeout / other transport)
+        # -> infrastructure-class credentials-guidance message, no code.
         (
             __import__("httpx").ConnectError("connection refused"),
-            "nicht erreichbar",
-            "Zugangsdaten",
+            "DATEV-Zugriff fehlgeschlagen",
+            "Ungültige VGM-Nummer",
         ),
-        # transient: 5xx -> retry-implying
+        # 5xx -> infrastructure-class credentials-guidance message
+        # WITH status code interpolated.
         (
             __import__("httpx").HTTPStatusError(
                 "server error",
                 request=_REQ,
                 response=__import__("httpx").Response(503, request=_REQ),
             ),
-            "nicht erreichbar",
-            "Zugangsdaten",
+            "DATEV-Zugriff fehlgeschlagen (HTTP 503)",
+            "Ungültige VGM-Nummer",
         ),
-        # NON-transient: 403 -> credentials/config, NO retry promise
+        # 4xx -> bad-input message (Mandant-/SB-facing actionable:
+        # "check the number you typed"). Was previously routed to
+        # the credentials message — that was the defect this change
+        # fixes.
         (
             __import__("httpx").HTTPStatusError(
                 "forbidden",
                 request=_REQ,
                 response=__import__("httpx").Response(403, request=_REQ),
             ),
+            "Ungültige VGM-Nummer",
             "Zugangsdaten",
-            "nicht erreichbar",
         ),
     ],
     ids=["RequestError", "5xx", "4xx-403"],
@@ -703,6 +725,9 @@ def test_B12_resolver_http_error_rerenders_classified_banner(
     assert expect_absent not in body
     assert "nicht gefunden" not in body
     assert "Traceback" not in body
+    # The retired "nicht erreichbar" copy must not resurface on any
+    # branch — drift detector for accidental partial-revert.
+    assert "nicht erreichbar" not in body
 
     # values preserved
     assert 'value="395357"' in body
@@ -710,6 +735,49 @@ def test_B12_resolver_http_error_rerenders_classified_banner(
     p1 = body.find("Fahrtkosten 2026?")
     p2 = body.find("Arbeitszimmer genutzt?")
     assert p1 != -1 and p2 != -1 and p1 < p2
+
+
+def test_create_request_renders_invalid_vgm_message_on_klardaten_400() -> None:
+    """Regression test for the pre-existing UX defect: a klardaten HTTP
+    400 on the resolve path was misclassified as a credentials issue.
+    Realistic cause for 400 here is invalid user input (Dokumentnummer
+    out of valid range, malformed filter value, etc.); the actionable
+    message is "check the number you typed", not "check your
+    credentials".
+
+    Paired with B12's parametrize matrix (which exercises 403/503/
+    ConnectError); this specific 400 test is the regression pin per
+    the chore(sb) ask.
+    """
+    fake = _FakeClient(
+        list_raises=__import__("httpx").HTTPStatusError(
+            "bad request",
+            request=_REQ,
+            response=__import__("httpx").Response(400, request=_REQ),
+        )
+    )
+    client = _client(fake)
+
+    r = client.post(
+        "/sb/create",
+        data={
+            "vgm_number": "395357",  # syntactically valid -> reaches resolver
+            "to": "mandant@example.com",
+            "cc": "kanzlei@example.com",
+            "subject": "Unterlagen 2026",
+            "body": "Bitte Belege.",
+            "questions": [],
+        },
+    )
+
+    assert r.status_code == 200  # friendly re-render, never 500
+    body = r.text
+    # Bad-input message present; credentials guidance MUST NOT appear
+    # (the defect was rendering the credentials message on 400).
+    assert "Ungültige VGM-Nummer" in body
+    assert "Zugangsdaten" not in body
+    # Drift detector for the retired "nicht erreichbar" copy.
+    assert "nicht erreichbar" not in body
 
 
 def test_B13_local_file_oserror_rerenders_distinct_banner_not_500(

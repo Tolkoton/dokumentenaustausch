@@ -130,25 +130,44 @@ def is_single_line(value: str) -> bool:
     return "\n" not in value and "\r" not in value
 
 
-def has_sentinel_collision(value: str) -> bool:
-    """Return ``True`` iff any line of ``value`` starts with the sentinel.
+def has_sentinel_collision(
+    value: str, sentinel_prefixes: tuple[str, ...] = (SENTINEL_PREFIX,)
+) -> bool:
+    """Return ``True`` iff any line of ``value`` starts with a forbidden sentinel.
 
-    A line whose stripped form begins with ``SENTINEL_PREFIX``
-    (``==BELEGMEISTER==``) would, after a serialize → parse round-trip,
-    be interpreted as a request-letter marker (``request/v1`` / ``fragen``
-    / ``end``). Rejecting such input at the producer side keeps the wire
-    format unambiguous without the parser ever having to disambiguate.
+    A line whose stripped form begins with one of ``sentinel_prefixes``
+    would, after a serialize → parse round-trip, be misinterpreted as a
+    structural marker. Rejecting such input at the producer side keeps
+    the wire format unambiguous without the parser ever having to
+    disambiguate.
+
+    The default ``sentinel_prefixes=(SENTINEL_PREFIX,)`` preserves 4a's
+    behavior verbatim: a single check against ``==BELEGMEISTER==``. The
+    response codec (`belegmeister.web.response_format`) passes a wider
+    tuple covering its bare section markers (``==ANTWORTEN==``,
+    ``==ANMERKUNGEN==``, ``==ATTACHMENTS==``, ``==FAILED_ATTACHMENTS==``)
+    plus the shared ``==BELEGMEISTER==`` prefix. One predicate, many
+    marker sets — per CLAUDE.md "Single source of truth for cross-layer
+    logic".
 
     Args:
-        value: Candidate body or question text. Any embedded newlines
-            are respected — each physical line is checked independently.
+        value: Candidate body / question / answer / filename text. Any
+            embedded newlines are respected — each physical line is
+            checked independently.
+        sentinel_prefixes: The tuple of forbidden line-leading prefixes
+            for the caller's marker set. Defaults to the 4a request
+            codec's single prefix.
 
     Returns:
         ``True`` if at least one line, stripped of surrounding
-        whitespace, starts with the sentinel prefix; ``False`` if every
-        line is safe.
+        whitespace, starts with any of the prefixes; ``False`` if every
+        line is safe against every prefix.
     """
-    return any(line.strip().startswith(SENTINEL_PREFIX) for line in value.split("\n"))
+    return any(
+        line.strip().startswith(prefix)
+        for line in value.split("\n")
+        for prefix in sentinel_prefixes
+    )
 
 
 def is_blank(value: str) -> bool:

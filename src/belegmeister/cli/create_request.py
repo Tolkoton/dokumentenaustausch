@@ -324,7 +324,18 @@ def run_create_request(
         result = upload_to_binder(letter_path, args.vgm_id, klardaten_client)
     if not result.success:
         raise UploadFailed(vgm_id=args.vgm_id, reason=result.error or "unknown error")
+    # UploadResult's success/document_id invariant: success=True ⇒
+    # document_id is a non-empty str (enforced by upload._map_response).
+    # mypy doesn't infer that from the boolean, so we narrow explicitly.
+    if result.document_id is None:
+        raise UploadFailed(
+            vgm_id=args.vgm_id,
+            reason="upload reported success but returned no document_id",
+        )
     token = generate_token(
-        vgm_id=args.vgm_id, expires_at=args.expires_at, secret=magic_link_secret
+        vgm_id=args.vgm_id,
+        letter_id=result.document_id,
+        expires_at=args.expires_at,
+        secret=magic_link_secret,
     )
     return f"{magic_link_base_url.rstrip('/')}/r/{token}"

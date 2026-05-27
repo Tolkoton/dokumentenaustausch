@@ -594,3 +594,439 @@ feat(sb): SB request-creation web form (4b) — CODE COMPLETE, BLOCKED
 **Artifact deviations on slice work:** none. All Bucket 1 tests carry planned names and assertions. D-1/D-2/D-E/D-S3/D-S8/D-P1.2/P1.1 implemented per artifact. RT1 wire-contract pin preserved verbatim. Smoke and G4 owner-driven per Phase 4.
 
 **Suggested commits:** see git status — split into feat(web) magic-link-ui and chore(overseer) loop infrastructure.
+
+## token-instance-binding — CODE COMPLETE 2026-05-26 (awaiting owner smoke)
+
+**Smoke pending owner walkthrough** (slice exit-criterion #5 — owner-runnable, ~30 s against dev klardaten):
+
+```bash
+uv run python scripts/smoke_token_instance_binding.py [VGM_NUMBER]
+```
+
+- Default VGM: 395357 (configurable via positional arg).
+- Output: `artifacts/spikes/token-instance-binding-smoke-<DATE>.json` —
+  records `smoke_id`, both created `letter_id`s + `structure_item_id`s,
+  HTTP response statuses + body lengths, and the four cross-assertion
+  booleans. Exit code 0 = all four PASS; 1 = any failed.
+- Mutates: two `_request_letter_*.txt` structure-items per run inside
+  the target VGM. Cleanup is OUT-of-scope this slice (per slice contract
+  "Deferred" section); the JSON output records the created
+  `structure_item_id`s so future cleanup can target them precisely. No
+  distinctive `_smoke_letter_<UUID>.txt` filename prefix because changing
+  it would mean touching production source for the smoke's convenience —
+  the per-run UUID smoke_id + JSON breadcrumb is the trade-off.
+- The four load-bearing assertions (per slice Seam 3):
+  `L1_marker IN /r/T1`, `L2_marker IN /r/T2`,
+  `L2_marker NOT IN /r/T1`, `L1_marker NOT IN /r/T2`. The NOT-in
+  cross-assertions are the original-bug regression guard.
+- HTTP layer: in-process via FastAPI's `TestClient` (real Starlette
+  stack against real klardaten), NOT a browser. Per slice Phase 1 the
+  smoke is automatable.
+
+**Tests:** 207 baseline → 216 final (+9 token-instance-binding net)
+
+- Pre-slice baseline 207 = 201 (magic-link-ui closure) + 6 (`tests/datev/test_resolver.py` added under commit `8f45faa "GUID to UI mapping fixed"` / ADR-0005 resolver rewrite; the +6 was the test-count "drift" the UNIT 1 audit flagged as soft).
+- Added (token-instance-binding, 9 new):
+  - **UNIT 1 (5)**: `test_TV5_payload_missing_letter_id_raises`,
+    `test_TV5_payload_letter_id_wrong_type_raises`,
+    `test_TV5_payload_letter_id_empty_string_raises`,
+    `test_old_vgm_only_token_rejects_as_malformed_under_new_schema`
+    (`tests/magic_link/test_token.py`),
+    `test_mint_threads_upload_result_id_into_token_letter_id`
+    (`tests/cli/test_create_request_flow.py` — Seam-2 round-trip).
+  - **UNIT 2 (4)**: `test_find_letter_by_id_selects_target_in_multi_letter_binder` (Seam-1),
+    `test_letter_id_not_in_binder_emits_distinct_log_reason` (Seam-5a),
+    `test_empty_binder_still_emits_letter_missing` (Seam-5b)
+    (all `tests/web/test_request_view.py`);
+    `test_FS6_id_not_in_letters_raises_letter_id_not_in_binder`
+    (`tests/web/test_find_letter_by_id.py` — unit-level Seam-5).
+- Migrated (7, no count change): `tests/web/test_pick_newest_letter.py` →
+  `tests/web/test_find_letter_by_id.py` via `git mv` (history
+  preserved). FS1 rewritten from "newest-by-name picks newest" to
+  "id-match picks target NOT newest" (unit-level counterpart to
+  Seam-1). FS2–FS5 preserved verbatim with id-match assertion adapter
+  (filter-edge coverage — `.md` legacy letter exclusion — intact).
+- Mechanical (no count change):
+  `test_TV5_payload_exp_wrong_type_raises` extended with `letter_id`
+  field so the decode order (vgm_id → letter_id → exp) reaches the
+  `exp` check; `LETTER_ID` constants aligned in
+  `tests/web/test_request_view.py` + `tests/web/test_app_route.py`
+  with default fixture ids so RV1 / RT1 happy paths remain green
+  under id-match.
+- Disappearance-or-explain on `_pick_newest_letter`: deleted from
+  `src/belegmeister/web/request_view.py`; replaced by
+  `_find_letter_by_id`. Dedicated test file renamed via `git mv`; no
+  test deletion. UNIT 2 audit verdict explicitly recorded the
+  disposition.
+
+**Wire-format change — no backwards-compat:** the pre-slice
+`{vgm_id, exp}`-only token payload is no longer honored. Per planning
+artifact + the prior magic-link-ui section's "BLOCKS PRODUCTION /r/
+HOSTING" finding, no production tokens existed (no public `/r/`
+host). An explicitly-forged old-format token is rejected as
+`InvalidTokenReason.MALFORMED` with "letter_id" in `exc.value.detail`.
+`test_old_vgm_only_token_rejects_as_malformed_under_new_schema`
+embodies this decision and locks it.
+
+**New `log_reason` taxonomy member:** `letter_id_not_in_binder` added
+to `RequestLinkInvalid` canonical taxonomy in
+`src/belegmeister/web/request_view.py`. Distinguishes "binder has
+letters but none with matching id" (Mandant stale link / letter
+deleted server-side after mint) from `letter_missing` (no letters at
+all) and `vgm_not_found` (VGM 404). Per slice decision D2 the
+distinction is preserved for operational observability — collapsing
+the taxonomy is irreversible (once merged, on-call cannot
+reverse-engineer which 404s were which class). Three Seam-5 tests
+pin the discriminator.
+
+**Surprises / Pre-G4 notes:**
+
+- **Hook fix shipped mid-slice as out-of-slice infrastructure work.**
+  Investigation during UNIT 1 → UNIT 2 transition revealed that
+  `stop_hook_active`-based "Guard 1" in `.claude/hooks/overseer_stop.py`
+  short-circuited BEFORE the per-branch SHA idempotency checks on
+  every hook-initiated turn, making both the audit-request and
+  PASS→CONTINUE injection branches unreachable in the autonomous
+  loop. Empirical proof via synthetic-envelope tests. Fix landed as
+  commit `328052f "fix loop x32"` (along with planning artifact,
+  spike artifacts, ADR-0005 renumber). First audit through the
+  corrected loop fired on UNIT 1 PASS; CONTINUE injection on UNIT 2
+  → UNIT 3 transition fired correctly. Empirical production
+  validation. Out-of-slice followup: `tests/test_overseer_stop.py`
+  `test_2` rewritten to assert the new contract (was: `test_2_stop_hook_active_short_circuits` pinning the broken
+  contract; now: `test_2_stop_hook_active_does_not_preempt_named_branches`).
+  The test rewrite is on disk but NOT in the hook-fix commit —
+  owner choice whether to fold into this slice's commit or run a
+  separate `chore(hook)` followup.
+- **`UploadResult.success`/`document_id` invariant not type-encoded.**
+  `src/belegmeister/cli/create_request.py` threads
+  `result.document_id` into `generate_token(letter_id=...)` with an
+  explicit `if result.document_id is None: raise UploadFailed(...)`
+  narrowing on the "should-never-happen" branch (mypy strict cannot
+  infer the invariant from a boolean). Consistent with the existing
+  `UploadFailed` pattern in the module. Tightening the dataclass to
+  encode the invariant (e.g., split into `UploadOK(document_id: str)`
+  and `UploadErr(error: str)`) is out-of-slice — deferred.
+- **`tests/web/test_app_route.py` LETTER_ID alignment.** Folded into
+  UNIT 2 mechanically (planning-artifact UNIT 2 file list was
+  incomplete — `test_app_route.py` calls `generate_token` and needed
+  the same LETTER_ID alignment as `test_request_view.py` to keep RT1
+  happy path green). Same fold-in pattern as UNIT 1's tests/web/*
+  signature propagation. Pre-disclosed at each unit's start; recorded
+  in both UNITs' OVERSEER_PASS audit entries.
+- **Test count "drift" between magic-link-ui closure and slice start.**
+  UNIT 1 audit flagged "+6 chore-drift" as soft language under
+  overseer check #6. UNIT 3 enumerated: the +6 was
+  `tests/datev/test_resolver.py` added under commit `8f45faa "GUID to
+  UI mapping fixed"` (ADR-0005 resolver rewrite). Soft observation
+  resolved.
+
+**Files (added / changed) — staged, NOT committed (human checkpoint)**
+
+- New: `scripts/smoke_token_instance_binding.py`,
+  `tests/web/test_find_letter_by_id.py` (renamed via `git mv` from
+  `tests/web/test_pick_newest_letter.py`).
+- Modified (src): `src/belegmeister/magic_link/token.py`,
+  `src/belegmeister/cli/create_request.py`,
+  `src/belegmeister/web/request_view.py`.
+- Modified (tests): `tests/magic_link/test_token.py`,
+  `tests/cli/test_create_request_flow.py`,
+  `tests/web/test_request_view.py`,
+  `tests/web/test_app_route.py`.
+- Deleted (via `git mv`): `tests/web/test_pick_newest_letter.py`.
+- Modified (out-of-slice followup, owner choice — not auto-staged
+  with the slice): `tests/test_overseer_stop.py` (`test_2` rewrite
+  to match the new hook contract).
+
+**Artifact deviations on slice work:** none material.
+`_smoke_letter_<UUID>.txt` distinctive filename prefix (suggested in
+the slice contract's pollution-mitigation note) was NOT used — the
+production `_request_letter_*.txt` naming via `run_create_request`
+was kept to avoid touching production source for smoke convenience.
+Per-run `smoke_id` UUID + recorded `structure_item_id`s in the smoke
+JSON serve as the cleanup breadcrumb. The trade-off favors
+smoke-mirrors-production over filename-grepability. Recorded in the
+smoke script's docstring.
+
+**Suggested commit message (for the human to run — see file list above):**
+
+```
+feat(token): bind magic-link tokens to specific letter (token-instance-binding)
+
+Token payload becomes {vgm_id, letter_id, exp}; read path uses
+list+find-by-id selection (not newest-by-name), so two requests in
+the same VGM are deterministically distinguished. Fixes the
+magic-link-ui smoke bug ("new request in same VGM serves new letter
+under old tokens") by construction.
+
+- UNIT 1: TokenPayload + generate_token gain letter_id; mint side
+  threads UploadResult.document_id; old {vgm_id, exp}-only tokens
+  rejected as MALFORMED (no production tokens to migrate per
+  PROGRESS.md magic-link-ui section).
+- UNIT 2: _pick_newest_letter → _find_letter_by_id (id-match, not
+  heuristic); new log_reason "letter_id_not_in_binder" distinguishes
+  Mandant-stale-link from empty-VGM and VGM-404 cases (slice D2
+  observability — collapsing the taxonomy is irreversible).
+- UNIT 3: scripts/smoke_token_instance_binding.py exercises the
+  full mint → /r/<token> loop with cross-assertions (NOT-in checks
+  catch the original magic-link-ui smoke bug by construction).
+
+Tests: 207 → 216 (+9 slice net). test_pick_newest_letter.py renamed
+to test_find_letter_by_id.py via git mv (history preserved).
+
+Slice contract: .overseer/slice/token-instance-binding.md
+Smoke awaiting owner walkthrough; output target:
+artifacts/spikes/token-instance-binding-smoke-<DATE>.json
+```
+
+## submit-handler — CODE COMPLETE 2026-05-27 (awaiting owner smoke)
+
+**Smoke pending owner walkthrough** (slice exit-criterion #8 —
+owner-runnable, ~30 s against dev klardaten):
+
+```bash
+uv run python scripts/smoke_submit_handler.py [VGM_NUMBER]
+```
+
+- Default VGM: 395357 (configurable via positional arg).
+- Output: `artifacts/spikes/submit-handler-smoke-<DATE>.json` — records
+  per-sub-scenario cross-assertion booleans + the `overall_pass` flag.
+  Exit code 0 = all three sub-scenarios PASS; 1 = any failed.
+- Mutates: 2 request letters (via `run_create_request`) + 1 response
+  doc + 2 attachment files (Sub-A) + 1 response doc (Sub-C) = 7 new
+  structure-items per run inside the target VGM. Sub-B adds nothing
+  (replay rejection short-circuits before any upload). Cleanup is
+  OUT-of-scope this slice (per ADR-0007 no-DELETE; manual DATEV-UO
+  only). Distinctive Mandant filenames
+  `_smoke_attachment_<smoke_id>_<i>.pdf` make grep-cleanup trivial; the
+  JSON output records all created `structure_item_id`s for precise
+  targeting.
+- The three sub-scenarios (per slice contract Phase 4):
+  - **Sub-A (full_success with files)**: mint L1 → POST 2 synthetic
+    PDF blobs + answer + Anmerkungen → assert HTTP 200 + "Vielen Dank"
+    template marker + response doc exists with both attachment UUIDs
+    in `==ATTACHMENTS==` section + binder count delta = 3.
+  - **Sub-B (replay_rejected)**: re-POST same token → assert HTTP 200
+    + "Bereits eingereicht" template marker + binder count unchanged
+    from end of Sub-A.
+  - **Sub-C (full_success answers-only)**: mint L2 → POST 0 files +
+    non-empty answer → assert HTTP 200 + "Vielen Dank" + response doc
+    exists with EMPTY `==ATTACHMENTS==` section + binder count delta = 1.
+- HTTP layer: in-process via FastAPI's `TestClient` (real Starlette
+  stack against real klardaten), NOT a browser. Per slice Phase 4 the
+  smoke is automatable.
+- Sub-D (partial_success) and Sub-E (all-files-failed) deferred to S1
+  unit-test coverage only — deterministically inducing klardaten-side
+  per-file rejection requires gateway-version-specific malformed
+  payloads. S1 matrix mock-drives all 4 branches.
+
+**Tests:** 216 baseline (token-instance-binding closure) → **254** final
+(+38 submit-handler net across 4 UNITs)
+
+- **UNIT 1** (+6 = 222): wire-format anchor + S4 (`_in_answer`,
+  `_in_anmerkungen`, `_in_filename`, `_preserves_near_miss_content_verbatim`)
+  + S6 codec-level (`test_serializer_embeds_filename_verbatim_with_umlaut`).
+  All in `tests/web/test_response_format.py` (new).
+- **UNIT 2** (+20 = 242): 4 D7 predicate cases + 3 in-binder replay
+  check cases + 6 banner-state derivation parametrized cases (all in
+  `tests/web/test_app_submit.py`, new); 6 S1 four-branch matrix
+  parametrized cases × 3 assertion axes (`tests/web/test_app_submit_branching.py`,
+  new); 1 lockSubmit pin (`test_get_form_renders_lock_submit_js` in
+  `tests/web/test_app_route.py`, added adjacent to existing :125
+  form-action pin).
+- **UNIT 3** (+12 = 254): 11 S2 `failure_reason_from_klardaten_outcome`
+  parametrized cases (added to `tests/web/test_response_format.py`);
+  1 S6 integration test (`test_response_doc_embeds_stored_not_original_filenames`
+  in `tests/web/test_app_submit_inventory.py`, new — two-files-same-original
+  fixture forcing UUID disambiguation observability).
+- **UNIT 4** (+0 = 254): smoke is owner-runnable, NOT pytest-covered.
+
+**Wire-format additions:**
+- New `response/v1` codec via `==BELEGMEISTER== response/v1` header +
+  bare `==ANTWORTEN==` / `==ANMERKUNGEN==` / `==ATTACHMENTS==` /
+  `==FAILED_ATTACHMENTS==` section markers + `==BELEGMEISTER== end`
+  terminator. Mirrors 4a's header pattern; section markers are bare
+  per the slice contract S4 fixture wording. Sentinel-collision
+  predicate (`has_sentinel_collision`) was REFACTORED in
+  `belegmeister.request_format` to accept an optional
+  `sentinel_prefixes` tuple (default preserves 4a behavior); response
+  codec calls with the full 5-marker tuple (`==BELEGMEISTER==` +
+  4 bare section markers). Per CLAUDE.md "Single source of truth for
+  cross-layer logic" + MEMORY[feedback_cross_layer_validation_extract]:
+  ONE predicate, both layers call it, no copy-paste.
+
+**New error class:** `RequestSubmitFailed` (in `web/app.py`, distinct
+from existing GET-side `RequestLinkInvalid`) with five `log_reason`
+values per ADR-0007 + slice contract D4:
+`upload_failed_all_files` / `upload_failed_response_doc` /
+`replay_rejected` / `empty_submit` / `multipart_parse_error`.
+
+**Protocol widen:** `LetterSource` (in `web/request_view.py`) gained
+`attach_file_to_binder` as a third method so the POST handler can
+commit the response doc via the same injected client it uses for
+reads. The real `KlardatenClient` already satisfies; 3 GET-side test
+fakes gained raise-on-call attach stubs (catches stray invocations
+from a refactor regression).
+
+**ADRs ratified mid-planning:**
+- [ADR-0006](docs/adr/0006-binder-as-state-store-for-replay-policy.md)
+  — in-binder presence of `_response_<letter_id>_*` is the
+  single-use replay marker. Zero new infrastructure; recovery
+  discoverable from DATEV-UO; TOCTOU window accepted as residual risk.
+- [ADR-0007](docs/adr/0007-best-effort-multi-file-upload-no-rollback.md)
+  — driven by Phase-0 premise A9 falsification (klardaten gateway has
+  NO DELETE proxy; every DELETE returns 404 empty body). Original
+  all-or-nothing design unimplementable; falls back to best-effort
+  continue-past-failures with 4-branch D6 state machine.
+
+**Hardest-Seam coverage** (slice contract Phase 3):
+- **S1** (D6 four-branch dispatcher matrix): 6 parametrized cases × 3
+  assertion axes = 18 assertion-axes. Tests the full POST handler
+  end-to-end through `TestClient` with `_StatefulBinder` (records
+  `attach_file_to_binder` calls) + `get_upload_orchestrator`
+  overridden to inject controllable inventory. Mental-mutation-tested
+  for all 4 bug shapes named in slice contract: always-commits,
+  always-burns, bailout-on-empty, partial-collapses-into-full. All
+  caught.
+- **S4** (codec sentinel-collision): 3 positive + 1 negative
+  (assertion-b form: no-raise AND verbatim content preserved).
+- **S6** (response doc references stored filenames, not originals):
+  codec-level umlaut-verbatim test + integration-level
+  two-files-same-original fixture forcing observable UUID
+  disambiguation.
+
+**Surprises / mid-slice findings:**
+
+- **A9 falsified pre-Phase-3 (precise resolver-perf precedent).**
+  Original Phase-2 D6 picked all-or-nothing rollback. Phase-0 A9 spike
+  script (`scripts/probe_klardaten_delete_semantics_2026-05-26.py`)
+  caught the falsification at 10 min effort — every DELETE returned
+  404 with empty body, file persisted post-DELETE. Cascade through
+  D6 / D8 / D4 / D5 ratified WITHIN Phase 2 rather than post-Phase 3.
+  Exact MEMORY[feedback_verify_premise_before_design] application.
+
+- **A5 (klardaten size envelope) verified to 200 MB.** Spike script
+  (`scripts/probe_klardaten_size_envelope_2026-05-26.py`) confirmed
+  25/50/100/200 MB all 200 OK; linear ~4 MB/s sustained throughput.
+  Above 200 MB untested by design (stop-on-first-failure with no
+  failures). `max_confirmed_mb=200` in
+  `artifacts/spikes/klardaten-size-envelope-2026-05-26.json`.
+
+- **A4 (SB notification path) CONFIRMED via colleague-eyeball** — no
+  notification mechanism; SB sees Mandant uploads via manual DATEV-UO
+  inspection. Caveat: not owner-direct observation. Banner copy
+  explicitly bans "SB has been notified" claim per ADR-0007.
+
+- **Starlette vs FastAPI UploadFile subclass mismatch caught at
+  UNIT 3 S6 integration.** UNIT 2 wrote `_collect_upload_files` with
+  `isinstance(item, fastapi.UploadFile)`. `request.form()` returns
+  the Starlette PARENT class (`fastapi.UploadFile` is a subclass), so
+  the isinstance check silently dropped every uploaded file. UNIT 2's
+  S1 matrix never exercised this codepath (orchestrator was
+  overridden to bypass file collection). UNIT 3's S6 integration test
+  was the first to use the REAL orchestrator with REAL multipart
+  files; the isinstance check silently dropped everything → orchestrator
+  returned empty inventory → branch-1 (answers-only) fired → 1
+  response doc attached instead of expected 3 structure-items. Two
+  ~10-line diagnostic scripts (cleaned up) confirmed
+  `fastapi.UploadFile is not starlette.datastructures.UploadFile` —
+  fixed by switching the import to `starlette.datastructures.UploadFile`
+  consistently. Exactly the "test-as-contract pass with broken impl"
+  the S6 wide-fixture exists to surface.
+
+- **TDD discipline gap in UNIT 2 (flagged in audit).** UNIT 2 was
+  written code-first / tests-after / batch-verify rather than
+  per-seam RED→GREEN. UNIT 3 corrected: S2 RED captured at
+  `ImportError`; S6 integration RED captured at `NotImplementedError`
+  from the stub orchestrator; both GREEN after impl. No fabricated
+  RED claims in either unit's close-out.
+
+- **LetterSource Protocol widen** with `attach_file_to_binder` (1
+  method added). Pre-disclosed in UNIT 2 close-out; ratified by
+  overseer audit as locally-optimal-not-ADR-worthy (small Protocol
+  extension; alternatives explicitly considered; behavior-preserving
+  for existing GET tests via raise-on-call stubs on 3 fakes).
+
+**Premise verification artifacts:**
+
+- `artifacts/spikes/submit-letter-discovery-2026-05-26.md` — A1/A3
+  multi-letter binder discovery (informed token-instance-binding;
+  carry-forward).
+- `artifacts/spikes/submit-sb-discovery-2026-05-26.md` — A4 CONFIRMED.
+- `artifacts/spikes/submit-multi-file-upload-2026-05-26.json` — A1
+  multi-file upload happy path.
+- `artifacts/spikes/klardaten-size-envelope-2026-05-26.json` — A5
+  verified to 200 MB.
+- `artifacts/spikes/klardaten-delete-semantics-2026-05-26.json` —
+  **A9 FALSIFIED**; `supports_all_or_nothing_rollback=false`.
+
+**Files (added / changed) — staged, NOT committed (human checkpoint)**
+
+- New (src):
+  `src/belegmeister/web/response_format.py`,
+  `src/belegmeister/web/templates/submit_confirmation.html`,
+  `src/belegmeister/web/templates/submit_error.html`.
+- Modified (src):
+  `src/belegmeister/web/app.py` (POST handler + dispatcher + predicate
+  + replay check + RequestSubmitFailed + real upload orchestrator),
+  `src/belegmeister/web/request_view.py` (LetterSource Protocol widen),
+  `src/belegmeister/web/templates/request.html` (lockSubmit JS),
+  `src/belegmeister/request_format.py` (has_sentinel_collision refactor:
+  optional `sentinel_prefixes` tuple parameter; default preserves 4a).
+- New (tests):
+  `tests/web/test_response_format.py`,
+  `tests/web/test_app_submit.py`,
+  `tests/web/test_app_submit_branching.py`,
+  `tests/web/test_app_submit_inventory.py`.
+- Modified (tests):
+  `tests/web/test_app_route.py` (lockSubmit pin),
+  `tests/web/test_request_view.py` (LetterSource fake gain attach stub).
+- New (scripts / artifacts):
+  `scripts/probe_klardaten_size_envelope_2026-05-26.py` (A5 spike),
+  `scripts/probe_klardaten_delete_semantics_2026-05-26.py` (A9 spike),
+  `scripts/smoke_submit_handler.py` (slice exit-criterion #8 smoke).
+- New (docs):
+  `docs/adr/0006-binder-as-state-store-for-replay-policy.md` (Accepted),
+  `docs/adr/0007-best-effort-multi-file-upload-no-rollback.md` (Accepted).
+
+**Suggested commit message (for the human to run — see file list above):**
+
+```
+feat(web): POST /r/<token>/submit — multi-file submit handler (submit-handler)
+
+Mandant POSTs answers + Anmerkungen + N files via the magic link;
+handler verifies token, checks in-binder replay marker, validates D7
+empty-submit predicate, runs continue-past-failures upload loop,
+dispatches D6 four-branch outcome (full_success / partial_success /
+all_failed_bailout / answers_only_full_success), serializes a
+response_format.py codec'd response doc, uploads it as the burn
+marker, renders confirmation with one of three banner states.
+
+- UNIT 1: response_format.py codec (==BELEGMEISTER== response/v1
+  + 4 bare section markers); sentinel-collision predicate refactored
+  in request_format.py to accept marker tuple (default preserves 4a);
+  S4 (3 + 1 negative) + S6 codec-level (umlaut verbatim).
+- UNIT 2: POST handler skeleton + D7 server-side predicate +
+  D2 in-binder replay + D6 four-branch dispatcher (stubbed loop) +
+  3 banner states (confirmation + error templates) +
+  RequestSubmitFailed exception (5 log_reasons) + lockSubmit JS +
+  S1 matrix (4 branches × 3 axes) + LetterSource Protocol widen.
+- UNIT 3: real continue-past-failures upload loop +
+  failure_reason_from_klardaten_outcome categorizer (S2) +
+  S6 integration two-files-same-original UUID disambiguation +
+  Starlette vs FastAPI UploadFile subclass-mismatch fix.
+- UNIT 4: scripts/smoke_submit_handler.py owner-runnable
+  Sub-A/B/C against real klardaten.
+
+ADRs: ADR-0006 (binder-as-state-store for replay) +
+ADR-0007 (best-effort multi-file, no rollback — A9 falsified
+klardaten DELETE). Phase 0 spikes (size-envelope + delete-semantics)
+shipped alongside; A4/A5/A9 evidence in artifacts/spikes/.
+
+Tests: 216 → 254 (+38 slice net across UNITs 1-3; UNIT 4 smoke is
+owner-runnable, not pytest-covered).
+
+Slice contract: .overseer/slice/submit-handler.md
+Smoke awaiting owner walkthrough; output target:
+artifacts/spikes/submit-handler-smoke-<DATE>.json
+```

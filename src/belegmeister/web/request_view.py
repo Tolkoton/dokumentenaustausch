@@ -1,10 +1,18 @@
 """Resolve a magic-link token into the data needed to render the client
 upload page. Pure logic, no HTTP framework — `web.app` is the glue.
 
-Flow: verify token (Slice-2 `verify_token`, imported not copied) → list
-the VGM's children → pick the newest `_request_letter_*.txt` by ISO name
-→ download + UTF-8 decode its bytes → `parse_request_letter` into a
-typed `RequestLetter` → `RequestView`.
+Flow: verify token (`magic_link.verify_token`, imported not copied) →
+list the VGM's children → find the `_request_letter_*.txt` whose
+structure-item `id` matches the token's `letter_id` → download + UTF-8
+decode its bytes → `parse_request_letter` into a typed `RequestLetter`
+→ `RequestView`.
+
+Slice token-instance-binding (D1/D2): selection is by id-match, not
+by a "newest letter" heuristic. The token carries `letter_id` (=
+`structure_item.id` returned by klardaten at upload time, per
+`datev.upload.UploadResult.document_id`). When two requests exist in
+the same VGM, the read deterministically loads the one the token was
+minted against — the magic-link-ui smoke bug is fixed by construction.
 
 Any failure becomes a single generic `RequestLinkInvalid`. The specific
 cause is NEVER surfaced to the client (information disclosure); it is
@@ -26,6 +34,7 @@ import httpx
 from belegmeister.magic_link.token import (
     InvalidToken,
     InvalidTokenReason,
+    TokenPayload,
     verify_token,
 )
 from belegmeister.request_format import (
@@ -40,16 +49,27 @@ from belegmeister.vgm_files import (
 
 
 class LetterSource(Protocol):
-    """Structural DI seam — the subset of KlardatenClient this needs.
+    """Structural DI seam — the subset of KlardatenClient the web app needs.
 
     Public Protocol (same rationale as Slice-2's `BinderClient`): lets
     the route inject the real client and tests inject a fake, both under
     mypy strict, without duplicating the shape.
+
+    Widened in slice submit-handler UNIT 2 with `attach_file_to_binder`
+    so the POST handler can commit the response doc via the same
+    injected client it already uses for reads. The real `KlardatenClient`
+    satisfies all three methods; GET-side test fakes that never write
+    can stub `attach_file_to_binder` as raise-on-call (catches stray
+    invocations from a refactor regression).
     """
 
     def list_structure_items(self, binder_guid: str) -> list[dict[str, Any]]: ...
 
     def download_document_file(self, document_file_id: int) -> bytes: ...
+
+    def attach_file_to_binder(
+        self, *, binder_guid: str, file_name: str, file_bytes: bytes
+    ) -> dict[str, Any]: ...
 
 
 class RequestLinkInvalid(Exception):
@@ -69,7 +89,18 @@ class RequestLinkInvalid(Exception):
                                timeout, decode) — operational, may need
                                on-call
       - "letter_missing"     : no `_request_letter_*.txt` child in the
-                               VGM
+                               VGM (empty/letterless binder)
+      - "letter_id_not_in_binder" : the VGM contains letters but none
+                               whose structure-item `id` matches the
+                               token's `letter_id`. Distinct from
+                               `letter_missing`: this case means "the
+                               specific letter this token references is
+                               gone or never existed" (likely Mandant
+                               using a stale link to a deleted letter
+                               or to a request from a different binder).
+                               Per slice token-instance-binding D2 the
+                               distinction is preserved for operational
+                               observability.
       - "download_failed"    : document-file GET errored / non-200
       - "letter_not_utf8"    : letter bytes are not valid UTF-8
       - "letter_malformed"   : bytes decode as UTF-8 but fail the
@@ -174,11 +205,19 @@ def resolve_request_view(
        A 404 here means the VGM id baked into the (verified!) token
        no longer exists in DATEV — extremely unlikely under normal
        use; logged as ``vgm_not_found``.
-    3. Pick the lexicographically-largest child whose name matches
-       ``_request_letter_*.txt``. The producer
-       (``cli.create_request.run_create_request``) writes
-       ISO-stamped names, so newest-by-name = newest-in-time. If no
-       letter is found, ``log_reason="letter_missing"``.
+    3. Find the child whose name matches ``_request_letter_*.txt``
+       AND whose structure-item ``id`` equals the token payload's
+       ``letter_id``. Selection is by id-match, NOT by a "newest"
+       heuristic — the token binds to a specific letter so two requests
+       in the same VGM are deterministically distinguished (slice
+       ``token-instance-binding`` D1/D2). Two distinct failure modes:
+
+       * ``log_reason="letter_missing"`` — the binder contains no
+         letters of the expected shape at all.
+       * ``log_reason="letter_id_not_in_binder"`` — the binder contains
+         letters but none with matching id. Operationally distinct
+         signal (Mandant stale link / deleted letter); preserved per
+         the slice's observability decision.
     4. ``letter_source.download_document_file(int(file_id))`` —
        klardaten ``GET /document-files/{id}``; decoded as UTF-8.
        Errors map to ``download_failed`` (transport) or
@@ -213,11 +252,12 @@ def resolve_request_view(
             values documented on the exception class
             (``token_expired``, ``token_bad_signature``,
             ``token_malformed``, ``vgm_not_found``, ``datev_error``,
-            ``letter_missing``, ``download_failed``,
-            ``letter_not_utf8``, ``letter_malformed``). Includes a
-            ``log_context`` ``dict`` where applicable — typically
-            ``{"vgm_id": ...}`` and, for HTTP errors, the status code;
-            for ``letter_malformed`` also the codec's ``reason``.
+            ``letter_missing``, ``letter_id_not_in_binder``,
+            ``download_failed``, ``letter_not_utf8``,
+            ``letter_malformed``). Includes a ``log_context`` ``dict``
+            where applicable — typically ``{"vgm_id": ...}`` and, for
+            HTTP errors, the status code; for ``letter_malformed`` also
+            the codec's ``reason``.
 
     Side effects:
         Up to two HTTP requests to klardaten via ``letter_source`` on
@@ -225,21 +265,23 @@ def resolve_request_view(
         owns logging so the token never leaves this function with
         free-text context).
     """
-    vgm_id = _verify(token, secret=secret, now=now)
-    children = _list_children(vgm_id, letter_source)
-    item = _pick_newest_letter(children, vgm_id=vgm_id)
-    text = _download_text(item, letter_source, vgm_id=vgm_id)
-    letter = _parse_letter(text, vgm_id=vgm_id)
+    payload = _verify(token, secret=secret, now=now)
+    children = _list_children(payload.vgm_id, letter_source)
+    item = _find_letter_by_id(
+        children, letter_id=payload.letter_id, vgm_id=payload.vgm_id
+    )
+    text = _download_text(item, letter_source, vgm_id=payload.vgm_id)
+    letter = _parse_letter(text, vgm_id=payload.vgm_id)
     return RequestView(
-        vgm_id=vgm_id,
+        vgm_id=payload.vgm_id,
         letter_filename=str(item["name"]),
         letter=letter,
     )
 
 
-def _verify(token: str, *, secret: str, now: datetime) -> str:
+def _verify(token: str, *, secret: str, now: datetime) -> TokenPayload:
     try:
-        payload = verify_token(token=token, secret=secret, now=now)
+        return verify_token(token=token, secret=secret, now=now)
     except InvalidToken as exc:
         # Three distinct server-side log_reasons. The CLIENT always sees
         # the same generic 404 (no disclosure); the split exists only in
@@ -248,7 +290,6 @@ def _verify(token: str, *, secret: str, now: datetime) -> str:
         # token_malformed = benign email-truncation / copy-paste.
         reason = _TOKEN_LOG_REASON[exc.reason]
         raise RequestLinkInvalid(log_reason=reason) from exc
-    return payload.vgm_id
 
 
 def _list_children(vgm_id: str, source: LetterSource) -> list[dict[str, Any]]:
@@ -269,9 +310,26 @@ def _list_children(vgm_id: str, source: LetterSource) -> list[dict[str, Any]]:
         ) from exc
 
 
-def _pick_newest_letter(
-    children: list[dict[str, Any]], *, vgm_id: str
+def _find_letter_by_id(
+    children: list[dict[str, Any]], *, letter_id: str, vgm_id: str
 ) -> dict[str, Any]:
+    """Find the request-letter structure-item whose ``id`` matches the
+    token's ``letter_id``.
+
+    Two distinct failure modes — both surface as ``RequestLinkInvalid``
+    but with different ``log_reason`` values so on-call dashboards can
+    distinguish them:
+
+    * ``letter_missing`` — the binder contains no ``_request_letter_*``
+      children at all (empty / letterless VGM).
+    * ``letter_id_not_in_binder`` — the binder contains letters but
+      none whose structure-item ``id`` equals ``letter_id`` (Mandant
+      using a stale link, or letter deleted server-side after mint).
+
+    The split is load-bearing for slice ``token-instance-binding`` D2:
+    collapsing the taxonomy is irreversible — once merged, we cannot
+    reverse-engineer which 404s were which class.
+    """
     letters = [
         c
         for c in children
@@ -284,7 +342,13 @@ def _pick_newest_letter(
         raise RequestLinkInvalid(
             log_reason="letter_missing", log_context={"vgm_id": vgm_id}
         )
-    return max(letters, key=lambda c: str(c["name"]))
+    for letter in letters:
+        if letter.get("id") == letter_id:
+            return letter
+    raise RequestLinkInvalid(
+        log_reason="letter_id_not_in_binder",
+        log_context={"vgm_id": vgm_id},
+    )
 
 
 def _download_text(item: dict[str, Any], source: LetterSource, *, vgm_id: str) -> str:
