@@ -1,0 +1,213 @@
+# components.yaml schema
+
+Optional machine-readable manifest of Phase 2 containers. Useful for:
+- Generating import-linter rules
+- Generating diagrams from a single source
+- Cross-checking that Phase 3 layout matches Phase 2 components
+
+Save as `.architecture/components.yaml`.
+
+## Schema
+
+```yaml
+version: 1
+project: "<project-name>"
+
+# Architectural style chosen in Phase 2
+style: "<layered | hexagonal | event-driven | microservices | monolith-modular | ...>"
+
+# Each container is a top-level component in the system
+containers:
+  - id: <stable-identifier-snake-case>
+    name: "<Display Name>"
+    description: "<One sentence on what it owns>"
+
+    # Phase 3 folder location (where this container lives in src/)
+    location: "src/<package>/<folder>"
+
+    # What it exposes to other containers
+    exposes:
+      - "<interface-name>"
+
+    # What it consumes from other containers (by id)
+    depends_on:
+      - <other-container-id>
+
+    # Phase 1 QASes this container is responsible for
+    owns_qases:
+      - QAS-01
+      - QAS-03
+
+    # Cross-cutting concerns this container deals with directly
+    cross_cutting:
+      - auth-issuer
+      - logging-source
+
+    # Technology stack (subset; details in ADRs)
+    tech:
+      language: python
+      framework: fastapi
+      datastore: postgres  # optional
+      key_libs:
+        - pydantic
+        - sqlmodel
+
+    # Reference to ADRs that affect this container
+    adrs:
+      - ADR-001
+      - ADR-004
+```
+
+## Example
+
+```yaml
+version: 1
+project: "claude-rss-reader"
+style: "hexagonal"
+
+containers:
+  - id: api_gateway
+    name: "API Gateway"
+    description: "HTTP entry point; routes requests, handles auth tokens, applies rate limiting."
+    location: "src/rss_reader/api"
+    exposes:
+      - http_api
+    depends_on:
+      - feed_service
+      - user_service
+    owns_qases:
+      - QAS-04  # rate limiting
+    cross_cutting:
+      - auth-verifier
+      - request-logger
+    tech:
+      language: python
+      framework: fastapi
+      key_libs:
+        - pydantic
+    adrs:
+      - ADR-001  # FastAPI choice
+      - ADR-002  # JWT auth
+
+  - id: feed_service
+    name: "Feed Service"
+    description: "Domain logic for subscriptions, feed fetching, and unread state."
+    location: "src/rss_reader/feeds"
+    exposes:
+      - subscribe_to_feed
+      - fetch_latest_items
+      - mark_as_read
+    depends_on:
+      - storage_adapter
+    owns_qases:
+      - QAS-01  # fetch latency
+      - QAS-02  # fetch reliability
+    cross_cutting: []
+    tech:
+      language: python
+      framework: pure-python
+      key_libs:
+        - pydantic
+        - httpx
+    adrs:
+      - ADR-003  # async fetch strategy
+
+  - id: storage_adapter
+    name: "Storage Adapter"
+    description: "Persistence for feeds, items, users; transactional boundary."
+    location: "src/rss_reader/storage"
+    exposes:
+      - feed_repository
+      - item_repository
+      - user_repository
+    depends_on: []
+    owns_qases:
+      - QAS-05  # data durability
+    cross_cutting: []
+    tech:
+      language: python
+      framework: sqlalchemy
+      datastore: postgres
+      key_libs:
+        - sqlmodel
+        - alembic
+    adrs:
+      - ADR-005  # Postgres choice
+      - ADR-006  # Alembic migrations
+
+  - id: user_service
+    name: "User Service"
+    description: "User registration, profile, and credential management."
+    location: "src/rss_reader/users"
+    exposes:
+      - register_user
+      - authenticate_user
+      - get_profile
+    depends_on:
+      - storage_adapter
+    owns_qases:
+      - QAS-03  # auth brute-force resistance
+    cross_cutting:
+      - auth-issuer
+    tech:
+      language: python
+      framework: pure-python
+      key_libs:
+        - pydantic
+        - argon2-cffi
+    adrs:
+      - ADR-002  # JWT auth
+      - ADR-007  # password hashing
+```
+
+## Validation
+
+Master-architect should verify on Phase 2 approval:
+1. Every container id is unique
+2. Every `depends_on` references an existing container id
+3. The dependency graph is acyclic
+4. Every QAS-NN referenced exists in Phase 1
+5. Every container has at least one of: `exposes`, `cross_cutting` ownership (a container with neither does nothing)
+
+A simple Python check:
+
+```python
+import yaml
+from pathlib import Path
+
+data = yaml.safe_load(Path(".architecture/components.yaml").read_text())
+ids = {c["id"] for c in data["containers"]}
+
+# Uniqueness
+assert len(ids) == len(data["containers"]), "Duplicate container ids"
+
+# Refs exist
+for c in data["containers"]:
+    for dep in c.get("depends_on", []):
+        assert dep in ids, f"Container {c['id']} depends on unknown {dep}"
+
+# No cycles (simple toposort)
+from collections import deque
+graph = {c["id"]: set(c.get("depends_on", [])) for c in data["containers"]}
+indegree = {i: 0 for i in ids}
+for srcs in graph.values():
+    for s in srcs:
+        indegree[s] += 1
+# Kahn's algo
+queue = deque(i for i, d in indegree.items() if d == 0)
+visited = 0
+while queue:
+    n = queue.popleft()
+    visited += 1
+    for d in graph[n]:
+        indegree[d] -= 1
+        if indegree[d] == 0:
+            queue.append(d)
+assert visited == len(ids), "Cycle detected in container dependencies"
+
+print("components.yaml valid")
+```
+
+## When NOT to use components.yaml
+
+If the project has ≤3 containers, the Markdown narrative in `phase-2-architecture.md` is enough. components.yaml earns its keep when you want machine-checking (validation, diagram generation, import-linter config) and when container count makes the prose hard to scan.

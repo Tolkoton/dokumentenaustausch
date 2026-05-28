@@ -1,0 +1,209 @@
+# tasks.yaml schema
+
+The Phase 4 output. This is the **only** interface between master-architect and feature-implementer skills.
+
+Save as `.architecture/phase-4-tasks.yaml`.
+
+## Schema
+
+```yaml
+version: 1
+project: "<project-name>"
+generated_at: "YYYY-MM-DDTHH:MM:SSZ"
+
+# Optional: high-level milestones grouping tasks (for ≥15 tasks)
+milestones:
+  - id: m1
+    name: "Foundation"
+    goal: "<one sentence>"
+  - id: m2
+    name: "First user journey"
+    goal: "<one sentence>"
+
+tasks:
+  - id: t001                       # zero-padded, stable
+    title: "<short title>"
+    milestone: m1                  # optional grouping
+
+    # Status — feature-implementer updates this as it works
+    status: TODO                   # TODO | IN_PROGRESS | BLOCKED | DONE | ABANDONED
+
+    # What and why
+    description: |
+      Multi-line plain-English explanation of WHAT to build and WHY.
+      Reference Phase 1 capabilities and Phase 2 components by name.
+      Avoid implementation prescription unless architecture demands it.
+
+    # Reference back to upstream design
+    references:
+      capabilities:                 # Phase 1 functional capabilities
+        - "User can register with email + password"
+      qases:                        # Phase 1 QASes affected
+        - QAS-03
+      containers:                   # Phase 2 containers touched
+        - user_service
+        - storage_adapter
+      adrs:                         # Phase 2 ADRs that constrain this task
+        - ADR-002  # JWT auth
+        - ADR-007  # password hashing
+
+    # File-level scope
+    files_to_create:
+      - src/rss_reader/users/models.py
+      - src/rss_reader/users/service.py
+      - src/rss_reader/users/repository.py
+      - tests/unit/users/test_service.py
+      - tests/integration/users/test_register_e2e.py
+
+    files_to_modify:
+      - src/rss_reader/api/router.py  # to register the new endpoint
+      - src/rss_reader/__init__.py    # export public API
+
+    # Test acceptance criteria (TDD: write these tests first)
+    acceptance_criteria:
+      - id: ac1
+        type: pytest
+        spec: "tests/unit/users/test_service.py::test_register_with_valid_credentials passes"
+      - id: ac2
+        type: pytest
+        spec: "tests/unit/users/test_service.py::test_register_rejects_duplicate_email passes"
+      - id: ac3
+        type: pytest
+        spec: "tests/integration/users/test_register_e2e.py::test_post_register_returns_201 passes"
+      - id: ac4
+        type: curl
+        spec: |
+          curl -X POST http://localhost:8000/register \
+            -H "Content-Type: application/json" \
+            -d '{"email":"test@example.com","password":"valid_password_123"}'
+          # Returns 201 with {"user_id": "<uuid>"}
+      - id: ac5
+        type: typecheck
+        spec: "mypy src/rss_reader/users succeeds"
+      - id: ac6
+        type: lint
+        spec: "ruff check src/rss_reader/users tests/unit/users tests/integration/users succeeds"
+
+    # DAG: which tasks must be DONE before this can start
+    depends_on:
+      - t001   # project init
+      - t002   # storage_adapter set up
+
+    # Estimated complexity (rough; for sequencing not scheduling)
+    complexity: M   # S | M | L (S = <30min, M = <2hr, L = <4hr; if XL split it)
+
+    # Architectural guidance the implementer MUST follow
+    constraints:
+      - "Password must be hashed with argon2 per ADR-007"
+      - "Email validation per Pydantic EmailStr"
+      - "User model must satisfy Phase 3 boundary-data rules (strict=True, frozen=True)"
+
+    # Optional: hints (not required, but useful for non-obvious tasks)
+    hints:
+      - "User domain entity stays in service.py; repository.py only handles DB I/O"
+      - "Use the auth provider stub from t004 — don't reimplement"
+
+  - id: t004
+    title: "<next task>"
+    # ...
+```
+
+## Status values
+
+- **TODO**: not yet started; all dependencies APPROVED (DONE) means task is unblocked
+- **IN_PROGRESS**: feature-implementer is actively working
+- **BLOCKED**: implementer needs human input (open question)
+- **DONE**: all acceptance criteria pass, code merged
+- **ABANDONED**: explicitly retired (rare — usually a backtrack signal that should trigger architecture revision)
+
+## Complexity sizing heuristic
+
+- **S**: <30 min for an experienced implementer. 1-2 files, ≤3 tests.
+- **M**: <2 hr. 3-5 files, ≤7 tests. Most tasks should be M.
+- **L**: <4 hr. Pushing the envelope. Reconsider splitting.
+- **XL**: do not allow. Split it.
+
+## Acceptance criteria types
+
+- `pytest`: a specific test function or file passes
+- `pytest-coverage`: coverage threshold met for a specific module
+- `curl`: an HTTP request returns expected response (e.g., for API tasks)
+- `cli`: a command-line invocation produces expected output
+- `typecheck`: `mypy` succeeds on specific path
+- `lint`: `ruff check` succeeds on specific path
+- `file-exists`: a file (e.g., migration) exists with expected content
+- `manual`: human verification required (use sparingly — these break TDD; prefer concrete tests)
+
+## Vertical-slice rule (the most important one)
+
+Each task, when DONE, leaves the codebase in a state where the user can do something they couldn't before. The only exceptions are:
+- t001 (project init)
+- Possibly t002-t003 if they set up infrastructure required by every subsequent slice
+
+If your task list is mostly "set up X", "add Y abstractions", "configure Z" — you have horizontal layering. Rewrite.
+
+## DAG validation
+
+Master-architect must verify before approving Phase 4:
+
+```python
+import yaml
+from collections import defaultdict, deque
+from pathlib import Path
+
+data = yaml.safe_load(Path(".architecture/phase-4-tasks.yaml").read_text())
+tasks = {t["id"]: t for t in data["tasks"]}
+
+# All deps exist
+for t in tasks.values():
+    for d in t.get("depends_on", []):
+        assert d in tasks, f"Task {t['id']} depends on unknown {d}"
+
+# Acyclic (Kahn's algorithm)
+graph = {tid: set(t.get("depends_on", [])) for tid, t in tasks.items()}
+in_edges = defaultdict(int)
+for srcs in graph.values():
+    for s in srcs:
+        in_edges[s] += 1
+ready = deque(tid for tid in tasks if in_edges[tid] == 0)
+visited = 0
+while ready:
+    tid = ready.popleft()
+    visited += 1
+    for d in graph[tid]:
+        in_edges[d] -= 1
+        if in_edges[d] == 0:
+            ready.append(d)
+assert visited == len(tasks), "Cycle detected"
+
+# Every task has at least one acceptance criterion
+for t in tasks.values():
+    assert t.get("acceptance_criteria"), f"Task {t['id']} has no acceptance criteria"
+
+# All file references in acceptance criteria reference files in Phase 3 layout (heuristic)
+# (Skipping the actual path check here — it requires parsing phase-3-layout.md)
+
+print(f"tasks.yaml valid: {len(tasks)} tasks, DAG acyclic")
+```
+
+## Task count
+
+Typical Phase 4 has 8-40 tasks. Outside this range:
+- <8: tasks are too coarse; split them
+- \>40: project is too big for one architecture pass; introduce milestones and split
+
+## Lifecycle
+
+After Phase 4 APPROVED:
+1. tasks.yaml is the implementer's worklist
+2. feature-implementer picks `status: TODO` task whose `depends_on` are all `DONE`
+3. Implementer updates `status` as it works
+4. Implementer must NOT modify any other field — those are architect's decisions
+5. If implementer needs to modify task scope (split, add files, change criteria), it must escalate to architect (backtrack signal)
+
+## What this file does NOT contain
+
+- Code (none — that's implementer's job)
+- Test contents (only test file paths and assertions)
+- Schedule (no dates; complexity hints sequence, not calendar)
+- Assignee (single-developer assumption)

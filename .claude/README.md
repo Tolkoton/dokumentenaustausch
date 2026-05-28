@@ -11,9 +11,11 @@ Each agent's behaviour lives in its own definition (see
 a definition disagree, the definition wins — and this map is stale and should
 be fixed.
 
-**Tag legend:** `[project]` = defined inside this repo's `.claude/`.
-`[global]` = defined in `~/.claude/` (shared across all projects; can change
-outside this repo — see [§5](#5-path-reconciliation-important)).
+**Tag legend:** `[project]` = repo-native, defined only in this repo's
+`.claude/`. `[vendored]` = a skill **copied** into `.claude/skills/` from
+`~/.claude/skills/` so the repo is self-contained — it is a **fork**; upstream
+changes are not picked up automatically (see §8). `[global]` = still defined
+only in `~/.claude/` (the subagents and some commands were not vendored).
 
 ---
 
@@ -45,13 +47,13 @@ Two distinct build pipelines exist (a builder must know which one they extend):
 
 | Component | Tag | Kind | One-line role |
 |---|---|---|---|
-| `master-architect` | `[global]` | skill | 5-phase design → `tasks.yaml` handoff |
-| `feature-architect` | `[global]` | skill | Splits an oversized task into a DAG of sub-tasks |
-| `feature-implementer` | `[global]` | skill | Implements one `tasks.yaml` task under strict TDD |
-| `slice-builder` | `[global]` | skill | Builds one thin vertical slice (seam-first TDD) |
-| `self-learning-orchestrator` | `[global]` | skill | Dispatches the memory lifecycle at each dev moment |
-| `documentation` | `[global]` | skill | Maintains AGENTS.md / ADRs / `docs/` (this guide's skill) |
-| `claude-autonomy` | `[global]` | skill | One-time config of `settings.json` + the 6 hooks |
+| `master-architect` | `[vendored]` | skill | 5-phase design → `tasks.yaml` handoff |
+| `feature-architect` | `[vendored]` | skill | Splits an oversized task into a DAG of sub-tasks |
+| `feature-implementer` | `[vendored]` | skill | Implements one `tasks.yaml` task under strict TDD |
+| `slice-builder` | `[vendored]` | skill | Builds one thin vertical slice (seam-first TDD) |
+| `self-learning-orchestrator` | `[vendored]` | skill | Dispatches the memory lifecycle at each dev moment |
+| `documentation` | `[vendored]` | skill | Maintains AGENTS.md / ADRs / `docs/` (this guide's skill) |
+| `claude-autonomy` | `[vendored]` | skill | One-time config of `settings.json` + the 6 hooks |
 | `updater` | `[global]` | subagent | Pre-change ImpactAnalysis + EditPlan allowlist |
 | `coder` | `[global]` | subagent | Implements only EditPlan-allowlisted files |
 | `tester` | `[global]` | subagent | Runs the 4-gate chain; adversarial review |
@@ -206,9 +208,10 @@ calling other agents directly. Checklist:
 
 This map points; it does not restate. For behaviour, read the source:
 
-- Skills: `~/.claude/skills/<name>/SKILL.md` (global),
-  `.claude/skills/overseer/SKILL.md` (project).
-- Subagents: `~/.claude/agents/{coder,tester,updater}.md`.
+- Skills: all under `.claude/skills/<name>/SKILL.md` now — `overseer` is
+  repo-native; the other 7 are **vendored** copies whose upstream is
+  `~/.claude/skills/<name>/` (keep them in sync manually — see §8).
+- Subagents: `~/.claude/agents/{coder,tester,updater}.md` (global, not vendored).
 - Commands: `~/.claude/commands/{lesson,wrap-up,stuck,memory-maintenance}.md`,
   `.claude/commands/plan-slice.md`.
 - Hooks: `.claude/hooks/*` (wired in `.claude/settings.json`).
@@ -217,13 +220,14 @@ This map points; it does not restate. For behaviour, read the source:
 
 ---
 
-## 8. Path reconciliation (important)
+## 8. Path reconciliation & vendoring (important)
 
-Global skill files were written before this repo moved its agent dirs under
-`.claude/`. They still say `.architecture/`, `.overseer/`, `artifacts/`, and
-`.artifacts/current/` at the repo root. **In this repo the real locations are:**
+**Path reconciliation.** The skill files (now vendored into `.claude/skills/`)
+were written before this repo moved its agent dirs under `.claude/`. Their text
+still says `.architecture/`, `.overseer/`, `artifacts/`, and `.artifacts/current/`
+at the repo root. **In this repo the real locations are:**
 
-| Global skill says | This repo uses |
+| Skill text says | This repo uses |
 |---|---|
 | `.architecture/` | `.claude/architecture/` |
 | `.overseer/` | `.claude/overseer/` |
@@ -231,4 +235,16 @@ Global skill files were written before this repo moved its agent dirs under
 | `.artifacts/current/` | unchanged (root) — dormant until first CSE run |
 
 A new agent operating here must write to the **`.claude/` locations**. If a
-global skill emits a root-level path, treat it as the `.claude/` equivalent.
+skill emits a root-level path, treat it as the `.claude/` equivalent. (Vendoring
+copied the skills verbatim; their internal paths were **not** rewritten.)
+
+**Vendoring (the 7 `[vendored]` skills).** They were copied from
+`~/.claude/skills/` to make this repo self-contained. Consequences:
+
+- **Fork / drift.** The copies do not track upstream. If a global skill is
+  improved, re-copy it into `.claude/skills/` to pick up the change.
+- **Double discovery.** Because the originals still live in `~/.claude/skills/`,
+  each vendored skill is registered **twice** (global + project) when working in
+  this repo. To make the repo the single source, remove the global copy — but
+  that affects every *other* project on this machine, so it is a deliberate,
+  separate decision.
