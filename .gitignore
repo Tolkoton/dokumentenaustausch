@@ -19,9 +19,8 @@ env/
 ENV/
 
 # --- Tooling caches ---
-.mypy_cache/
-.pytest_cache/
-.ruff_cache/
+# mypy / ruff / pytest caches are redirected into .cache/ via pyproject.toml
+.cache/
 .tox/
 .coverage
 .coverage.*

@@ -33,12 +33,17 @@ packages = ["src/belegmeister"]
 strict = true
 python_version = "3.12"
 files = ["src", "tests", "scripts"]
+cache_dir = ".cache/mypy"
 
 [[tool.mypy.overrides]]
 module = ["reportlab.*"]
 ignore_missing_imports = true
 
+[tool.ruff]
+cache-dir = ".cache/ruff"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-x -q"
 pythonpath = ["src"]
+cache_dir = ".cache/pytest"
