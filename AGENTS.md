@@ -133,3 +133,4 @@ there and never commit it. Full table: `docs/reference/environment.md`.
 - Phase 0 / 1 architecture artifacts: `.claude/architecture/`.
 - Slice-by-slice history: `PROGRESS.md`.
 - Autonomy rules (commits, hooks, allowed Bash): top of `CLAUDE.md`.
+- Agentic system map (which agent makes / uses which artifact, how to add one): `.claude/README.md`.
