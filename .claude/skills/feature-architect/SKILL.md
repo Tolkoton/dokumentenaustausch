@@ -216,7 +216,7 @@ Then exit. feature-architect's work is done.
 
 Invoked by feature-architect:
 
-- Reads `master-architect/phases/4-task-decomposition.md` for the original Phase 4 rules
+- Reads `master-architect/workflow/phase-4-decompose.md` for the original Phase 4 rules
 - Reads `master-architect/references/madr-format.md` if generating a split rationale ADR
 
 Invokes:
