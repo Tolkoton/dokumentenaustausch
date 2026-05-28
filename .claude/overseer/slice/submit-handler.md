@@ -105,7 +105,7 @@ window — accepted residual risk per ADR-0006. **Recovery requires
 BOTH:** `_response_<letter_id>_*` deletion in DATEV-UO AND original
 token's `exp` not yet passed.
 
-→ Ratified by **[ADR-0006](../../docs/adr/0006-binder-as-state-store-for-replay-policy.md)**.
+→ Ratified by **[ADR-0006](../../../docs/adr/0006-binder-as-state-store-for-replay-policy.md)**.
 
 ### D3 — File naming convention in VGM
 
@@ -203,7 +203,7 @@ with self-serve retry (orphan-runaway), stop-on-first-failure
 (needs binder→binder primitive that doesn't exist), single-file MVP
 (product-inadequate for Beleganforderung).
 
-→ Ratified by **[ADR-0007](../../docs/adr/0007-best-effort-multi-file-upload-no-rollback.md)**.
+→ Ratified by **[ADR-0007](../../../docs/adr/0007-best-effort-multi-file-upload-no-rollback.md)**.
 
 ### D7 — Empty-submit rule
 
