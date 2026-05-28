@@ -418,12 +418,12 @@ it; web app (4b) deferred to its own slice.
   - `beantwortete_fragen_<ISO>.txt` naming reserved; goes into
     `vgm_files.py` only when the submit slice actually touches it.
 
-## Slice 4b — SB request-creation web form — PENDING RECONCILIATION, **BLOCKED** (2026-05-19)
+## Slice 4b — SB request-creation web form (DONE 2026-05-21)
 
-Code-complete, all gates green, but **NOT shipped, NOT closed**. This is
-a flushed ledger, not the final DONE entry — 4b closes only when the
-resolver-perf BLOCKER is fixed AND smoke step 8b's measured not-found
-duration is recorded here.
+Code-complete, all gates green, shipped. Was briefly BLOCKED on resolver
+miss-latency (~45 s O(all-docs) scan); unblocked 2026-05-21 via a
+single-line `max_pages` fix (see "Resolver miss-latency — RESOLVED"
+below, which records the 44.3 s → ~3 s measurement). Status: CLOSED.
 
 ### State
 
