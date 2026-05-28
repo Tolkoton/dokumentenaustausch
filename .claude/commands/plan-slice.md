@@ -1,5 +1,5 @@
 ---
-description: Plan a new slice collaboratively with the overseer before implementation. Writes the planning artifact to .overseer/slice/<slug>.md.
+description: Plan a new slice collaboratively with the overseer before implementation. Writes the planning artifact to .claude/overseer/slice/<slug>.md.
 ---
 
 You are acting as **the Overseer in planning mode**, not as the coder.
@@ -14,7 +14,7 @@ If `$ARGUMENTS` is empty, ask the user for the slug first (kebab-case,
 e.g. `resolver-perf`, `submit-slice`). Confirm the slug before
 proceeding.
 
-Before starting the conversation: check that `.overseer/slice/$ARGUMENTS.md`
+Before starting the conversation: check that `.claude/overseer/slice/$ARGUMENTS.md`
 does NOT already exist. If it does, ask the user whether to (a) start
 fresh and overwrite, (b) read the existing one and refine, or (c) pick
 a different slug.
@@ -43,7 +43,7 @@ HALT and require owner approval if ANY assumption is:
 - Backed by a spike older than 7 days that didn't test the SPECIFIC behavior this slice relies on
 - Backed by documentation without a captured runtime confirmation
 
-For each unverified assumption: write a quick spike script (target ≤1 hour effort) that produces a captured output file in `artifacts/spikes/<slug>-<assumption-shortname>-<YYYY-MM-DD>.json` or similar. The slice contract then references this artifact in its "Premise verified" section.
+For each unverified assumption: write a quick spike script (target ≤1 hour effort) that produces a captured output file in `.claude/artifacts/spikes/<slug>-<assumption-shortname>-<YYYY-MM-DD>.json` or similar. The slice contract then references this artifact in its "Premise verified" section.
 
 DO NOT proceed to Phase 1 until every load-bearing assumption has fresh empirical backing OR owner has explicitly accepted the risk in writing (recorded as an OPEN item in the slice contract).
 
@@ -90,7 +90,7 @@ Push back if:
 
 # After all 5 phases — write the artifact
 
-Use the `Write` tool to create `.overseer/slice/$ARGUMENTS.md` with this
+Use the `Write` tool to create `.claude/overseer/slice/$ARGUMENTS.md` with this
 exact structure (replace `[...]` with the conversation's outcomes):
 
 ```markdown
@@ -101,7 +101,7 @@ exact structure (replace `[...]` with the conversation's outcomes):
 
 ## Premise verified
 
-(empty for Phase 0 to fill — each load-bearing assumption listed with: statement, evidence pointer to artifacts/spikes/*, freshness date, owner ratification if accepted-as-risk)
+(empty for Phase 0 to fill — each load-bearing assumption listed with: statement, evidence pointer to .claude/artifacts/spikes/*, freshness date, owner ratification if accepted-as-risk)
 
 ## Out of scope (deliberate)
 - [item 1 — what we're NOT doing in this slice]
@@ -130,12 +130,12 @@ exact structure (replace `[...]` with the conversation's outcomes):
 
 # After writing the artifact
 
-1. Use the `Edit` tool to append a ledger entry to `.overseer/ledger.md`
+1. Use the `Edit` tool to append a ledger entry to `.claude/overseer/ledger.md`
    per SKILL.md output structure:
    ```
    ## <ISO timestamp UTC> — $ARGUMENTS — PLANNING_COMPLETE
    - Trigger: /plan-slice command
-   - Evidence: .overseer/slice/$ARGUMENTS.md (just written)
+   - Evidence: .claude/overseer/slice/$ARGUMENTS.md (just written)
    - Action: planning artifact written, N decisions logged, M seams named
    - Category: strategy
    ```

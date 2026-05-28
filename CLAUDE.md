@@ -97,14 +97,14 @@ To inspect a hook: `cat .claude/hooks/<name>`. To temporarily disable: rename to
 - **Sentinel convention.** End your final message with `=== UNIT N COMPLETE ===`
   alone on its own line ONLY when you finish a genuine unit of work (a slice
   step, a `tasks.yaml` task). `N` is the unit number from the active slice
-  contract (`.overseer/slice/<slug>.md`), or `1` if none applies. Do **not**
+  contract (`.claude/overseer/slice/<slug>.md`), or `1` if none applies. Do **not**
   emit it on a work-in-progress, RED-only, or question-answering turn — that
   triggers a spurious audit. Full developer-facing rules: the "Unit completion
   protocol" section of `.claude/skills/overseer/SKILL.md`.
 - When the hook fires it injects `OVERSEER_REQUEST`. On seeing it, read
   `.claude/skills/overseer/SKILL.md` and apply the full 12-check checklist
   before responding further.
-- **Citing overseer check numbers (#1-#12) in your reasoning counts as overseer invocation** — preventive refusals based on checks still require the full output structure from `.claude/skills/overseer/SKILL.md`, including the mandatory `Edit`-tool write to `.overseer/ledger.md` BEFORE your reply.
+- **Citing overseer check numbers (#1-#12) in your reasoning counts as overseer invocation** — preventive refusals based on checks still require the full output structure from `.claude/skills/overseer/SKILL.md`, including the mandatory `Edit`-tool write to `.claude/overseer/ledger.md` BEFORE your reply.
 - **Verdict format.** End the audit turn with exactly one verdict marker on its
   own line: `OVERSEER_PASS` / `OVERSEER_BLOCK: #N <reason>` /
   `OVERSEER_ADR_REQUIRED: <ADR>` / `OVERSEER_ESCALATE: <JSON>`. Emitting any
@@ -113,11 +113,11 @@ To inspect a hook: `cat .claude/hooks/<name>`. To temporarily disable: rename to
 - If `OVERSEER_ESCALATE`, surface to user via `AskUserQuestion`. Use options + your_recommendation verbatim. Do not answer the escalation yourself; wait for human's selection.
 - If `OVERSEER_BLOCK`, address the specific check before continuing.
 - If `OVERSEER_ADR_REQUIRED`, draft the ADR in `docs/adr/` before proceeding with code.
-- Always append the entry the skill prescribes to `.overseer/ledger.md`.
+- Always append the entry the skill prescribes to `.claude/overseer/ledger.md`.
 - **Recursion safety & override.** The hook has three guards — the
   `stop_hook_active` envelope flag, a SHA-256 idempotency file
-  (`.overseer/.last_audit_sha`), and the `OVERSEER_` verdict marker above — and
-  a phase guard that skips the audit when `.overseer/state` contains `plan`.
+  (`.claude/overseer/.last_audit_sha`), and the `OVERSEER_` verdict marker above — and
+  a phase guard that skips the audit when `.claude/overseer/state` contains `plan`.
   Kill-switch: rename `.claude/hooks/overseer_stop.py` to `*.disabled`, or
   start Claude Code with `--disable-hooks`. Smoke-test the wiring with
   `python3 .claude/hooks/overseer_stop.py --dry-run` (always emits a block).

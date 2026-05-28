@@ -1,7 +1,7 @@
 # Slice magic-link-ui — planning artifact
 
 Planning conversation: 2026-05-26. Five phases, all ratified by owner.
-Ledger: `.overseer/ledger.md` entry at this date.
+Ledger: `.claude/overseer/ledger.md` entry at this date.
 
 ## Goal
 

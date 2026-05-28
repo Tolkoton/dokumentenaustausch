@@ -116,7 +116,7 @@ def test_FS5_non_txt_with_prefix_is_excluded() -> None:
 
     (Empirically reinforced: VGM 395357 in the dev environment contains
     3 such `.md` legacy letters from May 15/19, captured in
-    `artifacts/spikes/submit-letter-discovery-2026-05-26.md`.)"""
+    `.claude/artifacts/spikes/submit-letter-discovery-2026-05-26.md`.)"""
     children = [
         _item("_request_letter_2026-05-15T080805Z.md", file_id=1, item_id="THE_ID"),
         _item("_request_letter_notes", file_id=2, item_id="THE_ID"),

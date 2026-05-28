@@ -1,6 +1,6 @@
 """Probe: re-list `_request_letter_*` structure-items inside VGM 395357 and
 emit JSON. Cross-check against the values captured ~30 minutes ago in
-`artifacts/spikes/submit-letter-discovery-2026-05-26.md` to verify P2 —
+`.claude/artifacts/spikes/submit-letter-discovery-2026-05-26.md` to verify P2 —
 structure-item identifiers are stable across re-reads.
 
 Read-only. No mutations.

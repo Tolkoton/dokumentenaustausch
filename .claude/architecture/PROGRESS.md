@@ -65,7 +65,7 @@ Discovery-critique checklist run mentally against `phase-0-brief.md.DRAFT`:
 User approved the brief. Renamed `phase-0-brief.md.DRAFT` → `phase-0-brief.md`; INDEX.md updated.
 
 **Handoff to Phase 1 inputs**:
-- Brief: `.architecture/phase-0-brief.md`
+- Brief: `.claude/architecture/phase-0-brief.md`
 - 5 known unknowns to track as Phase 1 "Open questions" (DUO target resolution, GDPR retention, Mandant upload-page auth, reminder time-of-day, DATEV access-rights → pool mechanics)
 - Quality-attribute hints from brief §5 are raw material for Phase 1 QASes
 - Glossary seeds from brief §6 are starting glossary
@@ -118,7 +118,7 @@ User approved the brief. Renamed `phase-0-brief.md.DRAFT` → `phase-0-brief.md`
 User approved the system design. Renamed `phase-1-system.md.DRAFT` → `phase-1-system.md`; INDEX.md updated.
 
 **Handoff to Phase 2 inputs**:
-- System design: `.architecture/phase-1-system.md`
+- System design: `.claude/architecture/phase-1-system.md`
 - 7 QASes (QAS-01..QAS-07) — Phase 2 components must satisfy each; record owner per QAS.
 - 7 open questions (OQ-1..OQ-7) — each has a default proposal; Phase 2 must either ratify the default (with rationale) or propose alternative.
 - Constraints from §7 are non-negotiable inputs to Phase 2 ADRs.

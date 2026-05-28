@@ -185,7 +185,7 @@ def dispatch_submit_outcome(
 def is_empty_submit(*, answers: list[str], anmerkungen: str, file_count: int) -> bool:
     """D7 server-side predicate (tightened 2026-05-27 — pre-existing
     UX defect fix, NOT a slice contract revision; the slice's history
-    in `.overseer/slice/submit-handler.md` is preserved unchanged).
+    in `.claude/overseer/slice/submit-handler.md` is preserved unchanged).
 
     True iff the submission is incomplete — i.e. at least one of the
     request letter's questions has an empty answer (after whitespace

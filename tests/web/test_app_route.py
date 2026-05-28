@@ -207,7 +207,7 @@ def test_RT2_invalid_token_404_generic_no_disclosure_structured_log(
 
 # =============================================================================
 # G1 RED tests for slice magic-link-ui (Bucket 1 — 10 new tests)
-# See .overseer/slice/magic-link-ui.md § Hardest seams + § Exit criterion.
+# See .claude/overseer/slice/magic-link-ui.md § Hardest seams + § Exit criterion.
 #
 # RT3 (`test_RT3_xss_letter_text_is_html_escaped`) was deleted in UNIT 3
 # of this slice — it tested a variable (`letter_text`) that no longer

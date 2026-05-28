@@ -41,8 +41,8 @@ Trigger — both signals required:
    `src/` path AND a Bash `pytest`/`ruff`/`mypy` command.
 
 Recursion guards (any one suppresses): `stop_hook_active` flag · SHA-256
-idempotency file `.overseer/.last_audit_sha` · `OVERSEER_` verdict marker.
-Phase guard: `.overseer/state` containing `plan` skips the audit.
+idempotency file `.claude/overseer/.last_audit_sha` · `OVERSEER_` verdict marker.
+Phase guard: `.claude/overseer/state` containing `plan` skips the audit.
 
 Output: `{"decision":"block","reason":...}` on stdout (exit 0) injects the audit
 request; empty stdout (exit 0) passes the turn through.
@@ -99,7 +99,7 @@ at session start). After reviewing and committing the staged changes:
 5. **Confirm recursion guard:** the turn *after* the verdict ends normally —
    the hook does not re-fire (guard 3: the verdict marker; guard 2: the SHA).
 6. **Cleanup:** delete `src/belegmeister/_smoke_marker.py` and the
-   `.overseer/.last_audit_sha` file the smoke wrote.
+   `.claude/overseer/.last_audit_sha` file the smoke wrote.
 
 PASS criteria:
 

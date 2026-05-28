@@ -4,8 +4,8 @@
 - **Date:** 2026-05-27
 - **Deciders:** Owner (sole developer)
 - **References:**
-  - `.overseer/slice/submit-handler.md` (Phase 2 decision D2)
-  - `.overseer/slice/token-instance-binding.md` (deferred replay policy to this slice)
+  - `.claude/overseer/slice/submit-handler.md` (Phase 2 decision D2)
+  - `.claude/overseer/slice/token-instance-binding.md` (deferred replay policy to this slice)
   - [ADR-0002](0002-klardaten-gateway-for-datev.md) — klardaten as the
     sole DATEV integration surface; this ADR sits on top of that.
 

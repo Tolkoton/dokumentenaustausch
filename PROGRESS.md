@@ -463,7 +463,7 @@ live `api.klardaten.com`:
   initial probe finding) but ignores `$top` and filter params.
 - Production resolver hit path: ~0.9 s. Miss path: 44.3 s with default
   `max_pages=50`.
-- Persisted-index design (ADR-0001, `.overseer/slice/resolver-perf.md`)
+- Persisted-index design (ADR-0001, `.claude/overseer/slice/resolver-perf.md`)
   over-engineered for actual constraint: reducing `max_pages` from 50
   to 3 yields ~3 s worst-case miss without any index infrastructure.
 - Trade-off: false-negative on VGM numbers >3000 documents deep in API
@@ -604,7 +604,7 @@ uv run python scripts/smoke_token_instance_binding.py [VGM_NUMBER]
 ```
 
 - Default VGM: 395357 (configurable via positional arg).
-- Output: `artifacts/spikes/token-instance-binding-smoke-<DATE>.json` —
+- Output: `.claude/artifacts/spikes/token-instance-binding-smoke-<DATE>.json` —
   records `smoke_id`, both created `letter_id`s + `structure_item_id`s,
   HTTP response statuses + body lengths, and the four cross-assertion
   booleans. Exit code 0 = all four PASS; 1 = any failed.
@@ -774,9 +774,9 @@ under old tokens") by construction.
 Tests: 207 → 216 (+9 slice net). test_pick_newest_letter.py renamed
 to test_find_letter_by_id.py via git mv (history preserved).
 
-Slice contract: .overseer/slice/token-instance-binding.md
+Slice contract: .claude/overseer/slice/token-instance-binding.md
 Smoke awaiting owner walkthrough; output target:
-artifacts/spikes/token-instance-binding-smoke-<DATE>.json
+.claude/artifacts/spikes/token-instance-binding-smoke-<DATE>.json
 ```
 
 ## submit-handler — CODE COMPLETE 2026-05-27 (awaiting owner smoke)
@@ -789,7 +789,7 @@ uv run python scripts/smoke_submit_handler.py [VGM_NUMBER]
 ```
 
 - Default VGM: 395357 (configurable via positional arg).
-- Output: `artifacts/spikes/submit-handler-smoke-<DATE>.json` — records
+- Output: `.claude/artifacts/spikes/submit-handler-smoke-<DATE>.json` — records
   per-sub-scenario cross-assertion booleans + the `overall_pass` flag.
   Exit code 0 = all three sub-scenarios PASS; 1 = any failed.
 - Mutates: 2 request letters (via `run_create_request`) + 1 response
@@ -910,7 +910,7 @@ from a refactor regression).
   25/50/100/200 MB all 200 OK; linear ~4 MB/s sustained throughput.
   Above 200 MB untested by design (stop-on-first-failure with no
   failures). `max_confirmed_mb=200` in
-  `artifacts/spikes/klardaten-size-envelope-2026-05-26.json`.
+  `.claude/artifacts/spikes/klardaten-size-envelope-2026-05-26.json`.
 
 - **A4 (SB notification path) CONFIRMED via colleague-eyeball** — no
   notification mechanism; SB sees Mandant uploads via manual DATEV-UO
@@ -949,15 +949,15 @@ from a refactor regression).
 
 **Premise verification artifacts:**
 
-- `artifacts/spikes/submit-letter-discovery-2026-05-26.md` — A1/A3
+- `.claude/artifacts/spikes/submit-letter-discovery-2026-05-26.md` — A1/A3
   multi-letter binder discovery (informed token-instance-binding;
   carry-forward).
-- `artifacts/spikes/submit-sb-discovery-2026-05-26.md` — A4 CONFIRMED.
-- `artifacts/spikes/submit-multi-file-upload-2026-05-26.json` — A1
+- `.claude/artifacts/spikes/submit-sb-discovery-2026-05-26.md` — A4 CONFIRMED.
+- `.claude/artifacts/spikes/submit-multi-file-upload-2026-05-26.json` — A1
   multi-file upload happy path.
-- `artifacts/spikes/klardaten-size-envelope-2026-05-26.json` — A5
+- `.claude/artifacts/spikes/klardaten-size-envelope-2026-05-26.json` — A5
   verified to 200 MB.
-- `artifacts/spikes/klardaten-delete-semantics-2026-05-26.json` —
+- `.claude/artifacts/spikes/klardaten-delete-semantics-2026-05-26.json` —
   **A9 FALSIFIED**; `supports_all_or_nothing_rollback=false`.
 
 **Files (added / changed) — staged, NOT committed (human checkpoint)**
@@ -1021,12 +1021,12 @@ marker, renders confirmation with one of three banner states.
 ADRs: ADR-0006 (binder-as-state-store for replay) +
 ADR-0007 (best-effort multi-file, no rollback — A9 falsified
 klardaten DELETE). Phase 0 spikes (size-envelope + delete-semantics)
-shipped alongside; A4/A5/A9 evidence in artifacts/spikes/.
+shipped alongside; A4/A5/A9 evidence in .claude/artifacts/spikes/.
 
 Tests: 216 → 254 (+38 slice net across UNITs 1-3; UNIT 4 smoke is
 owner-runnable, not pytest-covered).
 
-Slice contract: .overseer/slice/submit-handler.md
+Slice contract: .claude/overseer/slice/submit-handler.md
 Smoke awaiting owner walkthrough; output target:
-artifacts/spikes/submit-handler-smoke-<DATE>.json
+.claude/artifacts/spikes/submit-handler-smoke-<DATE>.json
 ```

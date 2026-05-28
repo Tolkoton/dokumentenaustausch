@@ -16,8 +16,8 @@ shape; no production tokens exist, so the cut is clean.
 
 | # | Assumption | Evidence | Freshness |
 |---|------------|----------|-----------|
-| P1 | Each `_request_letter_*` in a VGM has identifiers (`id`, `document_file_id`, `counter`) distinct across letters in the same binder. | `artifacts/spikes/submit-letter-discovery-2026-05-26.md` — 17 letters in VGM 395357, all four identifier columns unique. | FRESH 2026-05-26 |
-| P2 | Those identifiers are stable across re-reads. | `artifacts/spikes/token-instance-binding-id-stability-2026-05-26.json` — re-listing of VGM 395357 at 10:40 UTC vs original probe at ~10:23 UTC: every `(id, document_file_id, counter, creation_date)` tuple byte-identical across all 17 letters. | FRESH 2026-05-26 |
+| P1 | Each `_request_letter_*` in a VGM has identifiers (`id`, `document_file_id`, `counter`) distinct across letters in the same binder. | `.claude/artifacts/spikes/submit-letter-discovery-2026-05-26.md` — 17 letters in VGM 395357, all four identifier columns unique. | FRESH 2026-05-26 |
+| P2 | Those identifiers are stable across re-reads. | `.claude/artifacts/spikes/token-instance-binding-id-stability-2026-05-26.json` — re-listing of VGM 395357 at 10:40 UTC vs original probe at ~10:23 UTC: every `(id, document_file_id, counter, creation_date)` tuple byte-identical across all 17 letters. | FRESH 2026-05-26 |
 | P3 | The mint side already has the letter's identifier in hand at token-mint time. | `src/belegmeister/datev/upload.py:212-223` — `UploadResult.document_id` IS the structure-item `id` (string). | FRESH (current source) |
 | P4 | The read side can fetch a specific letter via `klardaten.download_document_file(int) -> bytes`. | `src/belegmeister/klardaten/client.py:270`; `src/belegmeister/web/request_view.py:290-303` already uses it. | FRESH (current source) |
 | P5 | No production-issued tokens exist that would be broken by a wire-format change. | PROGRESS.md `magic-link-ui` section ("BLOCKS PRODUCTION /r/ HOSTING") + `web.app` is localhost-only. | FRESH 2026-05-26 |
@@ -80,7 +80,7 @@ Seam between `upload_to_binder` returning `UploadResult.document_id` and `genera
 
 ### Seam 3 — Automated smoke cross-assertion
 
-`scripts/smoke_token_instance_binding.py` — owner-runnable; output to `artifacts/spikes/`.
+`scripts/smoke_token_instance_binding.py` — owner-runnable; output to `.claude/artifacts/spikes/`.
 
 - **Flow:** create request in dev VGM → capture token T1 + letter L1's id + distinctive substring injected at mint time → create a SECOND request in the same VGM → capture token T2 + letter L2 + distinct distinctive substring → GET `/r/T1` → GET `/r/T2`.
 - **Bug shape (the original):** `/r/T1` renders L2's content. Smoke that asserts only `200 OK + non-empty body` PASSES with the bug intact.
@@ -91,7 +91,7 @@ Seam between `upload_to_binder` returning `UploadResult.document_id` and `genera
   - `L1_substring NOT IN /r/T2 body`
   The NOT-in cross-assertions are the real bug-detectors.
 - **Pollution mitigation:** filename prefix `_smoke_letter_<UUID>.txt` (distinctive); smoke output JSON records `structure_item_id`s for future cleanup targeting. Distinctive substrings injected at mint time within the test rather than relying on existing fixtures (immune to state-leak across runs).
-- **Output format:** `artifacts/spikes/token-instance-binding-smoke-<YYYY-MM-DD>.json` (load-bearing evidence — machine-parseable). Optional narrative alongside as `.md`.
+- **Output format:** `.claude/artifacts/spikes/token-instance-binding-smoke-<YYYY-MM-DD>.json` (load-bearing evidence — machine-parseable). Optional narrative alongside as `.md`.
 - **Anti-pattern named:** "200 OK is a contentless assertion under the bug we're fixing."
 
 ### Seam 5 — log_reason equality distinguishing three error paths
@@ -114,7 +114,7 @@ The slice is done when **all of these are simultaneously true**:
 2. **Seam-2 test green:** `tests/cli/test_create_request.py::test_mint_threads_upload_result_id_into_token_letter_id` — round-trip via `verify_token` assertion.
 3. **Seam-5 tests green:** three distinct `log_reason` assertions (letter_id_not_in_binder / letter_missing regression / vgm_not_found regression).
 4. **Token wire-format test green:** `tests/magic_link/test_token.py::test_old_vgm_only_token_rejects_as_malformed_under_new_schema` — explicit no-backwards-compat lockin; locks the Phase 1 decision into a test (catches the schema-loosening regression pattern of a `letter_id: str = ""` default sneaking in).
-5. **Smoke evidence captured:** `artifacts/spikes/token-instance-binding-smoke-<YYYY-MM-DD>.json` shows two real requests in dev VGM, both tokens captured with their `letter_id`s, and all four cross-assertion results = true. Owner-run; exit code 0.
+5. **Smoke evidence captured:** `.claude/artifacts/spikes/token-instance-binding-smoke-<YYYY-MM-DD>.json` shows two real requests in dev VGM, both tokens captured with their `letter_id`s, and all four cross-assertion results = true. Owner-run; exit code 0.
 6. **Gate cleanliness:** `uv run pytest tests/ -q` green; `uv run mypy --strict src/ tests/ scripts/` clean; `uv run ruff check .` clean. No regression in existing test count.
 7. **CLI external-surface sanity:** smoke output includes a one-shot decode of the printed token verifying it yields a 3-field payload `{vgm_id, letter_id, exp}` with non-empty `letter_id`.
 8. **Disappearance-or-explain on `_pick_newest_letter`:** UNIT 2's PASS verdict explicitly names that the deleted function's existing tests are removed (or migrated), with the new Seam-1 wide test cited as the behavior-covering replacement. Same discipline magic-link-ui used for RT3 deletion (D-S3).
@@ -125,7 +125,7 @@ The slice is done when **all of these are simultaneously true**:
 |------|-------|-------|------------------------|
 | **UNIT 1 — Token wire format + mint wiring (fused)** | TokenPayload gains `letter_id: str`; `generate_token` gains `letter_id` arg; `_encode_payload`/`_decode_payload` schema updated; old-format token rejected as MALFORMED; `run_create_request` threads `UploadResult.document_id`; Seam-2 round-trip test exercises both axes. | `src/belegmeister/magic_link/token.py`, `tests/magic_link/test_token.py`, `src/belegmeister/cli/create_request.py`, `tests/cli/test_create_request.py` | `=== UNIT 1 COMPLETE ===` |
 | **UNIT 2 — Read-side wiring + error taxonomy** | `_pick_newest_letter` deleted (tests removed/migrated, recorded in PASS verdict); `_find_letter_by_id` added; new `log_reason="letter_id_not_in_binder"` added to `RequestLinkInvalid` taxonomy; Seam-1 wide test; Seam-5 three log_reason tests. | `src/belegmeister/web/request_view.py`, `tests/web/test_request_view.py` | `=== UNIT 2 COMPLETE ===` |
-| **UNIT 3 — Automated smoke + slice closure** | `scripts/smoke_token_instance_binding.py` with cross-assertions and UUID-prefixed filenames; owner runs against dev VGM; output to `artifacts/spikes/token-instance-binding-smoke-<YYYY-MM-DD>.json` recording structure_item_ids + 4 cross-assertion booleans; PROGRESS.md closure entry; final gate check. | `scripts/smoke_token_instance_binding.py`, `PROGRESS.md`, `.overseer/ledger.md` | `OVERSEER_SLICE_AWAITING_OWNER: <closure message including smoke output path>` |
+| **UNIT 3 — Automated smoke + slice closure** | `scripts/smoke_token_instance_binding.py` with cross-assertions and UUID-prefixed filenames; owner runs against dev VGM; output to `.claude/artifacts/spikes/token-instance-binding-smoke-<YYYY-MM-DD>.json` recording structure_item_ids + 4 cross-assertion booleans; PROGRESS.md closure entry; final gate check. | `scripts/smoke_token_instance_binding.py`, `PROGRESS.md`, `.claude/overseer/ledger.md` | `OVERSEER_SLICE_AWAITING_OWNER: <closure message including smoke output path>` |
 
 ## Deferred to later slices
 
@@ -134,7 +134,7 @@ The slice is done when **all of these are simultaneously true**:
 - **`.md`-suffix legacy letters in VGM 395357** — operational hygiene. Why later: invisible to today's `.txt`-filtered read path; doesn't affect correctness. Gating: manual deletion request or convention change.
 - **Smoke cleanup automation** — out; UUID prefix + recorded `structure_item_id`s in JSON as breadcrumbs. Why later: needs klardaten DELETE semantics probed first (unprobed today). Gating: DATEV admin asks "why are these `_smoke_letter_*` files here?" or a probe of DELETE semantics is run.
 - **Production deployment of `/r/`** — separate slice (per PROGRESS.md `magic-link-ui` "Future open-item"). Why later: deployment-character (TLS, hosting, healthcheck, MAGIC_LINK_SECRET provisioning); not code-slice character.
-- **A4 (SB-discovery DATEV-UO visual check)** — submit-handler Phase 0 prerequisite (template at `artifacts/spikes/submit-sb-discovery-2026-05-26.md`). Why later: A4 is a premise for submit-handler's notification semantics, not this slice's read path.
+- **A4 (SB-discovery DATEV-UO visual check)** — submit-handler Phase 0 prerequisite (template at `.claude/artifacts/spikes/submit-sb-discovery-2026-05-26.md`). Why later: A4 is a premise for submit-handler's notification semantics, not this slice's read path.
 
 ## Rejected (not deferred)
 
@@ -152,4 +152,4 @@ The slice is done when **all of these are simultaneously true**:
   6. Commit as `chore(docs): renumber ADR-0003 (klardaten-gateway-no-dollar-prefix) to ADR-0005 — collided with existing ADR-0003 (uv-package-manager)`.
   After this lands, UNIT 3's PROGRESS.md closure can cite ADR-0005 cleanly.
 
-- **A4 owner-driven DATEV-UO visual check** (not blocking this slice, but pending from prior conversation). Template at `artifacts/spikes/submit-sb-discovery-2026-05-26.md`; results feed submit-handler's Phase 0, not this slice's.
+- **A4 owner-driven DATEV-UO visual check** (not blocking this slice, but pending from prior conversation). Template at `.claude/artifacts/spikes/submit-sb-discovery-2026-05-26.md`; results feed submit-handler's Phase 0, not this slice's.

@@ -28,15 +28,15 @@ rollback" (revised D6 + ADR-0007).
 
 | # | Assumption | Evidence | Status |
 |---|------------|----------|--------|
-| A1 | Klardaten accepts multi-file 2-step upload for arbitrary common MIME types (PDF, JPG). | `artifacts/spikes/submit-multi-file-upload-2026-05-26.json` — PDF 7.2 MB + JPG 5.8 MB both 200. | ✅ VERIFIED 2026-05-26 |
+| A1 | Klardaten accepts multi-file 2-step upload for arbitrary common MIME types (PDF, JPG). | `.claude/artifacts/spikes/submit-multi-file-upload-2026-05-26.json` — PDF 7.2 MB + JPG 5.8 MB both 200. | ✅ VERIFIED 2026-05-26 |
 | A2 | `KlardatenClient.attach_file_to_binder` exposes the upload seam reusably. | `src/belegmeister/datev/upload.py` `upload_to_binder` + `BinderClient` Protocol used by `create_request.py`. | ✅ VERIFIED (current src) |
 | A3 | Token (post token-instance-binding) carries `letter_id`; submit handler can re-fetch the exact letter Mandant saw. | token-instance-binding slice CODE COMPLETE 2026-05-26 (PROGRESS.md). `parse_request_letter` exists (`request_format.py`, slice 4a). | ✅ VERIFIED (current src) |
-| A4 | SB sees Mandant-uploaded files in DATEV-UO without any notification mechanism. | `artifacts/spikes/submit-sb-discovery-2026-05-26.md` — verdict CONFIRMED via colleague-eyeball; notification: NONE. | ✅ VERIFIED 2026-05-26 (caveat: colleague-proxy observation, not owner-direct) |
-| A5 | Klardaten accepts realistic Mandant upload sizes (25–200 MB). | `artifacts/spikes/klardaten-size-envelope-2026-05-26.json` — 25/50/100/200 MB all 200; `max_confirmed_mb=200`. | ✅ VERIFIED 2026-05-27 (untested above 200 MB) |
+| A4 | SB sees Mandant-uploaded files in DATEV-UO without any notification mechanism. | `.claude/artifacts/spikes/submit-sb-discovery-2026-05-26.md` — verdict CONFIRMED via colleague-eyeball; notification: NONE. | ✅ VERIFIED 2026-05-26 (caveat: colleague-proxy observation, not owner-direct) |
+| A5 | Klardaten accepts realistic Mandant upload sizes (25–200 MB). | `.claude/artifacts/spikes/klardaten-size-envelope-2026-05-26.json` — 25/50/100/200 MB all 200; `max_confirmed_mb=200`. | ✅ VERIFIED 2026-05-27 (untested above 200 MB) |
 | A6 | `POST /r/{token}/submit` returns 404 today (no clashing handler). | PROGRESS.md slice-3 smoke; magic-link-ui smoke. | ✅ VERIFIED |
 | A7 | Stateless tokens carry no replay protection today. | `src/belegmeister/magic_link/token.py` is pure HMAC. | ✅ VERIFIED (current src — this is as-is fact; policy is D2) |
 | A8 | FastAPI multipart `List[UploadFile]` + scalar `Form` mixed in one request. | python-multipart added in 4b; documented FastAPI behavior. | ✅ ACCEPTED on framework docs + loud-vs-silent-failure reasoning (first integration test catches loudly) |
-| A9 | Klardaten supports DELETE on `/document-files/{id}` and `/documents/{vgm}/structure-items/{id}` as a rollback primitive. | `artifacts/spikes/klardaten-delete-semantics-2026-05-26.json` — every DELETE returned 404 with empty body; file persists post-DELETE; `supports_all_or_nothing_rollback=false`. | ❌ **FALSIFIED 2026-05-27** — drove D6 cascade to best-effort; see ADR-0007 |
+| A9 | Klardaten supports DELETE on `/document-files/{id}` and `/documents/{vgm}/structure-items/{id}` as a rollback primitive. | `.claude/artifacts/spikes/klardaten-delete-semantics-2026-05-26.json` — every DELETE returned 404 with empty body; file persists post-DELETE; `supports_all_or_nothing_rollback=false`. | ❌ **FALSIFIED 2026-05-27** — drove D6 cascade to best-effort; see ADR-0007 |
 
 **Operational implication beyond this slice (A9 fallout):** klardaten
 gateway provides NO API-driven cleanup path. ALL file removal is
@@ -370,7 +370,7 @@ klardaten-side per-file rejection requires gateway-version-specific
 malformed payloads. S1's mock-driven coverage is the authoritative
 branch-correctness assertion; smoke covers wiring for Sub-A/B/C.
 
-Output JSON: `artifacts/spikes/submit-handler-smoke-<YYYY-MM-DD>.json`
+Output JSON: `.claude/artifacts/spikes/submit-handler-smoke-<YYYY-MM-DD>.json`
 with per-sub `cross_assertion_pass` booleans + `overall_pass`.
 
 Pollution per run: 1 response doc + 2 attachments + 1 second response
@@ -385,7 +385,7 @@ iteratively during development".
 ### Slice closure artifacts (2)
 
 10. **PROGRESS.md slice-closure entry** at head of file: "submit-handler — <DATE>". Includes 12-item exit table (PASS/FAIL with evidence path); smoke cross-assertion summary; final test count delta; ADR cross-references (0006 + 0007); commit message draft.
-11. **`.overseer/ledger.md`** updated with `OVERSEER_SLICE_AWAITING_OWNER` per closure discipline.
+11. **`.claude/overseer/ledger.md`** updated with `OVERSEER_SLICE_AWAITING_OWNER` per closure discipline.
 
 ### Disappearance-or-explain accounting
 
@@ -401,8 +401,8 @@ iteratively during development".
 - `docs/adr/0007-best-effort-multi-file-upload-no-rollback.md` (Accepted 2026-05-27)
 - `scripts/probe_klardaten_size_envelope_2026-05-26.py` (Phase-0 spike; staged 2026-05-27)
 - `scripts/probe_klardaten_delete_semantics_2026-05-26.py` (Phase-0 spike; staged 2026-05-27)
-- `artifacts/spikes/klardaten-size-envelope-2026-05-26.json` (A5 evidence)
-- `artifacts/spikes/klardaten-delete-semantics-2026-05-26.json` (A9 falsification evidence)
+- `.claude/artifacts/spikes/klardaten-size-envelope-2026-05-26.json` (A5 evidence)
+- `.claude/artifacts/spikes/klardaten-delete-semantics-2026-05-26.json` (A9 falsification evidence)
 
 **MODIFIED:**
 - `src/belegmeister/web/app.py` — gains POST `/r/{token}/submit` handler + `RequestSubmitFailed` exception handler registration.
@@ -426,7 +426,7 @@ the new handler's path (NOT a 404 assertion to migrate).
 | **UNIT 1 — Response codec** | `response_format.py` with sentinel-collision predicate imported from `request_format.py` (NO copy-paste per MEMORY); S4 tests + S6 codec-level test. Pure functions; no HTTP, no klardaten. | `src/belegmeister/web/response_format.py`, `tests/web/test_response_format.py` | `=== UNIT 1 COMPLETE ===` |
 | **UNIT 2 — Handler skeleton + branching dispatcher** | POST route in `web/app.py`; token verify; D7 server-side predicate; D2 in-binder replay check; D6 four-branch dispatcher (with stubbed file-upload loop); confirmation template skeleton + 3 banner states; `RequestSubmitFailed` exception class; lockSubmit JS in `request.html`; S1 branching matrix (mocked inventory inputs); banner-state derivation test; replay-check tests; D7 predicate tests; lockSubmit pin in `test_app_route.py`. **Sentinel framing:** "branching dispatcher correct against mocked-inventory inputs; loop stubbed for UNIT 3" — NOT "handler complete". | `src/belegmeister/web/app.py`, `src/belegmeister/web/templates/submit_confirmation.html`, `src/belegmeister/web/templates/request.html`, `tests/web/test_app_submit.py`, `tests/web/test_app_submit_branching.py`, `tests/web/test_app_route.py`, plus error-class home (Phase-3 implementer pick) | `=== UNIT 2 COMPLETE === (handler skeleton + branching matrix; loop stubbed for UNIT 3)` |
 | **UNIT 3 — Real file-upload loop + inventory** | Continue-past-failures sequential loop in handler; `AttachmentOutcome` inventory construction; failure_reason categorization; D8 ordering (files first, then response doc); S6 stored-filename integration test; S2 failure_reason parametrized test. | `src/belegmeister/web/app.py` (loop replaces UNIT-2 stub), `tests/web/test_app_submit_inventory.py` (new), `tests/web/test_response_format.py` (S2 cases) | `=== UNIT 3 COMPLETE ===` |
-| **UNIT 4 — Smoke + closure** | `scripts/smoke_submit_handler.py` Sub-A/B/C against real klardaten with JSON evidence; PROGRESS.md slice-closure entry; ledger `OVERSEER_SLICE_AWAITING_OWNER`. | `scripts/smoke_submit_handler.py`, `PROGRESS.md`, `.overseer/ledger.md` | `OVERSEER_SLICE_AWAITING_OWNER: <closure message including smoke output path>` |
+| **UNIT 4 — Smoke + closure** | `scripts/smoke_submit_handler.py` Sub-A/B/C against real klardaten with JSON evidence; PROGRESS.md slice-closure entry; ledger `OVERSEER_SLICE_AWAITING_OWNER`. | `scripts/smoke_submit_handler.py`, `PROGRESS.md`, `.claude/overseer/ledger.md` | `OVERSEER_SLICE_AWAITING_OWNER: <closure message including smoke output path>` |
 
 ## Deferred to later slices (19)
 

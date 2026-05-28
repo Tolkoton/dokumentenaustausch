@@ -10,14 +10,14 @@ STEP 1 spike — see stop-hook-mechanics-2026-05-21.log.
 HOW TO RUN (owner, after reviewing + committing the staged changes)
 1. Restart Claude Code (new session) so the Stop-hook snapshot reloads and
    overseer-on-stop.sh becomes live.
-2. Ensure an active slice exists: a non-_template *.md in .overseer/slice/.
+2. Ensure an active slice exists: a non-_template *.md in .claude/overseer/slice/.
 3. End a turn with a unit-completion line — e.g. paste pytest output
    containing "N passed", or a sentence saying "tests pass".
 4. Observe: the next turn should begin with the injected OVERSEER CHECKPOINT
    audit prompt (re-read the slice contract, apply the 12-check, emit verdict).
 5. Let the audit run; confirm it emits "OVERSEER_PASS / OVERSEER_BLOCK /
    OVERSEER_ESCALATE" on its own line, and — on PASS — appends a
-   .overseer/ledger.md entry.
+   .claude/overseer/ledger.md entry.
 6. Confirm the turn AFTER the verdict ends normally (recursion guard: the
    hook must NOT re-fire on the verdict turn).
 
@@ -48,4 +48,4 @@ overseer-on-stop.sh, _stop_probe.sh, _field_probe.sh and
 tests/test_overseer_on_stop_hook.py were deleted in the same change.
 
 The new design and the new post-restart smoke procedure live in
-artifacts/spikes/auto-overseer-redesign-2026-05-22.md.
+.claude/artifacts/spikes/auto-overseer-redesign-2026-05-22.md.

@@ -140,7 +140,7 @@ class RequestView:
             to, cc). The route handler is responsible for narrowing the
             Jinja2 template context — ``letter.to`` and ``letter.cc``
             are NEVER passed to the Mandant page (see Decision D-S8 in
-            ``.overseer/slice/magic-link-ui.md``: privacy +
+            ``.claude/overseer/slice/magic-link-ui.md``: privacy +
             XSS-surface reduction by construction). They remain on the
             view because the future email-slice consumes them as SMTP
             header values.

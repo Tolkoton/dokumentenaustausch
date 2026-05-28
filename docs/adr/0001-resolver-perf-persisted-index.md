@@ -165,7 +165,7 @@ becomes observable.
 exposes a count endpoint or enumeration cursor, the persisted-index
 approach (atomic-swap SQLite, background refresh, cold-start signal)
 is a known-good path — keep this document for reference. The
-`.overseer/slice/resolver-perf.md` planning artifact remains as a
+`.claude/overseer/slice/resolver-perf.md` planning artifact remains as a
 record of the rejected slice, including the 5 hardest seams analysis
 which is reusable on any future "background refresh + atomic state"
 work.

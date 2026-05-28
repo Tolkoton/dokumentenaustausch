@@ -1,5 +1,5 @@
 """Smoke: submit-handler slice — exit-criterion #8 of
-`.overseer/slice/submit-handler.md`.
+`.claude/overseer/slice/submit-handler.md`.
 
 WARNING — MUTATES LIVE DATEV. Creates request letters + response docs
 + attachment files in the target VGM via the production mint pipeline
@@ -63,7 +63,7 @@ grep-cleanup trivial.
 
 Output
 ------
-``artifacts/spikes/submit-handler-smoke-<YYYY-MM-DD>.json`` — exit code
+``.claude/artifacts/spikes/submit-handler-smoke-<YYYY-MM-DD>.json`` — exit code
 0 = ``overall_pass`` true; 1 = any sub-scenario's cross-assertion failed.
 
 Usage
@@ -94,7 +94,7 @@ from belegmeister.magic_link.token import verify_token
 from belegmeister.web.app import app, get_letter_source, get_now, get_secret
 
 DEFAULT_VGM_NUMBER = 395357
-ARTIFACTS_DIR = Path(__file__).resolve().parents[1] / "artifacts" / "spikes"
+ARTIFACTS_DIR = Path(__file__).resolve().parents[1] / ".claude" / "artifacts" / "spikes"
 
 # Wire-format section markers, kept local rather than imported from
 # response_format so this smoke is fully self-contained for the

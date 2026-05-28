@@ -36,7 +36,7 @@ Read the header of each file before running it; use the dev instance.
 - `scripts/`       — smokes, probes, spikes. Dated filenames for spikes (`spike_*_YYYY-MM-DD.py`).
 - `docs/`          — human + agent docs; see `docs/index.md`.
 - `docs/adr/`      — append-only architecture decisions.
-- `.architecture/` — phase artifacts from the master-architect skill (Phase 0–1).
+- `.claude/architecture/` — phase artifacts from the master-architect skill (Phase 0–1).
 - `PROGRESS.md`    — chronological slice log; append-only journal.
 
 ## Coding conventions
@@ -130,6 +130,6 @@ there and never commit it. Full table: `docs/reference/environment.md`.
 - Architecture decisions (append-only): [`docs/adr/`](docs/adr/).
 - DATEV portal map: [`docs/DATEV-DEVELOPER-PORTAL.md`](docs/DATEV-DEVELOPER-PORTAL.md).
 - Security and known limitations: [`docs/SECURITY.md`](docs/SECURITY.md).
-- Phase 0 / 1 architecture artifacts: `.architecture/`.
+- Phase 0 / 1 architecture artifacts: `.claude/architecture/`.
 - Slice-by-slice history: `PROGRESS.md`.
 - Autonomy rules (commits, hooks, allowed Bash): top of `CLAUDE.md`.

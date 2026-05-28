@@ -1,5 +1,5 @@
 """Smoke: token-instance-binding — exit-criterion #5 of slice
-`.overseer/slice/token-instance-binding.md`.
+`.claude/overseer/slice/token-instance-binding.md`.
 
 WARNING — MUTATES LIVE DATEV. Creates two real `_request_letter_*.txt`
 artifacts inside the target VGM via `run_create_request` against the
@@ -39,7 +39,7 @@ A unique smoke-id and the recorded `structure_item_id`s in the output
 JSON serve as the cleanup breadcrumb.
 
 Output:
-    artifacts/spikes/token-instance-binding-smoke-<YYYY-MM-DD>.json
+    .claude/artifacts/spikes/token-instance-binding-smoke-<YYYY-MM-DD>.json
 
 Exit code 0 = all four cross-assertions PASS; 1 = any failed.
 
@@ -47,7 +47,7 @@ Usage:
     uv run python scripts/smoke_token_instance_binding.py [VGM_NUMBER]
 
 VGM_NUMBER defaults to 395357 (dev binder used by
-`artifacts/spikes/submit-letter-discovery-2026-05-26.md`).
+`.claude/artifacts/spikes/submit-letter-discovery-2026-05-26.md`).
 """
 
 from __future__ import annotations
@@ -70,7 +70,7 @@ from belegmeister.magic_link.token import verify_token
 from belegmeister.web.app import app, get_letter_source, get_now, get_secret
 
 DEFAULT_VGM_NUMBER = 395357
-ARTIFACTS_DIR = Path(__file__).resolve().parents[1] / "artifacts" / "spikes"
+ARTIFACTS_DIR = Path(__file__).resolve().parents[1] / ".claude" / "artifacts" / "spikes"
 
 
 def _build_client() -> KlardatenClient:

@@ -27,7 +27,7 @@ filter returned a full 1000-row default page; `$top=50` also returned
 > *"klardaten exposes no server-side filter; the only primitive is
 >  `$skip` pagination."*
 
-That conclusion drove the 1004-line `.overseer/slice/resolver-perf.md`
+That conclusion drove the 1004-line `.claude/overseer/slice/resolver-perf.md`
 planning artifact and 16 staged-then-discarded implementation files for
 a persisted SQLite number→GUID index with atomic-swap concurrency,
 background refresh, and cold-start signaling.
@@ -126,7 +126,7 @@ primitive. That premise is false. With server-side `filter` available,
 the persisted-index design — background refresh, atomic-swap
 concurrency, SQLite schema, cold-start signal, freshness stamp,
 deadline-net considerations — has no remaining justification. The
-1004-line `.overseer/slice/resolver-perf.md` planning artifact is
+1004-line `.claude/overseer/slice/resolver-perf.md` planning artifact is
 removed in the immediately-following commit. ADR-0001 itself stays in
 the repository as historical record (per project policy never to
 overwrite an ADR) but should not inform new design work.

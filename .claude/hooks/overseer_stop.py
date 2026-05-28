@@ -12,7 +12,7 @@ writer and read a stale or empty turn (anthropics/claude-code#15813).
 
 Claude Code now ships the finished turn's text directly on the Stop envelope as
 `last_assistant_message` (field probe PASS, 2026-05-22 — see
-artifacts/spikes/auto-overseer-redesign-2026-05-22.md). This hook reads that
+.claude/artifacts/spikes/auto-overseer-redesign-2026-05-22.md). This hook reads that
 field for the *completion text* and consults the transcript only for the
 *structural tool-use signal*, which is a stable historical record by the time
 Stop fires.
@@ -23,10 +23,10 @@ TRIGGER — both signals required:
                     path AND a Bash command matching pytest|ruff|mypy.
 
 RECURSION GUARDS — per-branch, by design:
-  - Audit-request branch    — `.overseer/.last_audit_sha` SHA of last message
+  - Audit-request branch    — `.claude/overseer/.last_audit_sha` SHA of last message
                               that requested an audit; same-message re-fire
                               is silent.
-  - PASS / CONTINUE branch  — `.overseer/.last_continue_sha` SHA of last
+  - PASS / CONTINUE branch  — `.claude/overseer/.last_continue_sha` SHA of last
                               OVERSEER_PASS message that produced a CONTINUE
                               injection; same-message re-fire is silent.
   - Halt markers (BLOCK / ESCALATE / ADR_REQUIRED / SLICE_AWAITING_OWNER /
@@ -39,7 +39,7 @@ RECURSION GUARDS — per-branch, by design:
   the autonomous loop. The per-branch SHAs handle recursion safety for the
   branches they cover.
 
-PHASE GUARD: `.overseer/state` containing `plan` suppresses the audit — the
+PHASE GUARD: `.claude/overseer/state` containing `plan` suppresses the audit — the
 developer is designing, not completing units of work.
 
 Output: `{"decision":"block","reason":...}` on stdout (exit 0) injects the audit
@@ -80,7 +80,7 @@ CHECK_CMD_RE = re.compile(r"\b(?:pytest|ruff|mypy)\b")
 EDIT_TOOLS = frozenset({"Edit", "Write", "MultiEdit"})
 
 CONTINUE_REASON = (
-    "OVERSEER_PASS recorded. Proceed with the next unit per the active slice plan in .overseer/slice/. "
+    "OVERSEER_PASS recorded. Proceed with the next unit per the active slice plan in .claude/overseer/slice/. "
     "Do the next pending UNIT's work (src/ edits + pytest/ruff/mypy), then emit `=== UNIT N COMPLETE ===` on its own line. "
     "If the slice has no more code units (only smoke / G4 owner-driven steps remain), or if you are uncertain what UNIT N is, "
     "emit `OVERSEER_SLICE_AWAITING_OWNER: <reason>` on its own line to halt and request owner input. "
@@ -92,7 +92,7 @@ AUDIT_REASON = (
     "claim). Before yielding control to the owner:\n"
     "1. Read .claude/skills/overseer/SKILL.md and apply the full 12-check "
     "checklist to the work since your last audit.\n"
-    "2. Append the prescribed entry to .overseer/ledger.md before replying.\n"
+    "2. Append the prescribed entry to .claude/overseer/ledger.md before replying.\n"
     "3. Output a verdict on its own line, exactly one of: OVERSEER_PASS | "
     "OVERSEER_BLOCK: #N <reason> | OVERSEER_ESCALATE: <JSON> | "
     "OVERSEER_ADR_REQUIRED: <ADR>. Emitting any OVERSEER_ verdict marker is "
@@ -216,16 +216,18 @@ def _has_tool_signal(transcript_path: str) -> bool:
 
 
 def _phase_is_plan(project_dir: Path) -> bool:
-    """True if `.overseer/state` exists and names the planning phase."""
+    """True if `.claude/overseer/state` exists and names the planning phase."""
     try:
-        content = (project_dir / ".overseer" / "state").read_text(encoding="utf-8")
+        content = (project_dir / ".claude" / "overseer" / "state").read_text(
+            encoding="utf-8"
+        )
     except OSError:
         return False
     return "plan" in content.lower()
 
 
 def _audit_sha_file(project_dir: Path) -> Path:
-    return project_dir / ".overseer" / ".last_audit_sha"
+    return project_dir / ".claude" / "overseer" / ".last_audit_sha"
 
 
 def _message_digest(message: str) -> str:
@@ -253,8 +255,8 @@ def main() -> NoReturn:
     # docstring "RECURSION GUARDS"). It preempted the per-branch SHA
     # idempotency on every hook-initiated turn — making both injection
     # branches (audit-request, PASS→CONTINUE) unreachable in the
-    # autonomous loop. Per-branch SHAs at `.overseer/.last_audit_sha`
-    # and `.overseer/.last_continue_sha` are the design's intended
+    # autonomous loop. Per-branch SHAs at `.claude/overseer/.last_audit_sha`
+    # and `.claude/overseer/.last_continue_sha` are the design's intended
     # recursion guards and are sufficient.
     dry_run = "--dry-run" in sys.argv[1:]
     envelope = _read_envelope()
@@ -272,7 +274,8 @@ def main() -> NoReturn:
     if PASS_MARKER_RE.search(message):
         sha_file = (
             Path(os.environ.get("CLAUDE_PROJECT_DIR", "."))
-            / ".overseer"
+            / ".claude"
+            / "overseer"
             / ".last_continue_sha"
         )
         digest = _message_digest(message)

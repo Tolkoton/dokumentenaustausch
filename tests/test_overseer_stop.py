@@ -14,8 +14,8 @@ The hook fires only when BOTH signals are present:
                     path AND a Bash pytest/ruff/mypy command.
 
 Recursion safety is per-branch by design: the audit-request branch is
-guarded by `.overseer/.last_audit_sha`; the OVERSEER_PASS → CONTINUE
-branch by `.overseer/.last_continue_sha`; halt-marker turns
+guarded by `.claude/overseer/.last_audit_sha`; the OVERSEER_PASS → CONTINUE
+branch by `.claude/overseer/.last_continue_sha`; halt-marker turns
 (BLOCK / ESCALATE / ADR_REQUIRED / SLICE_AWAITING_OWNER / SLICE_COMPLETE)
 silent-pass because the owner takes over. An earlier `stop_hook_active`
 short-circuit was removed — it preempted the per-branch SHAs on every
@@ -24,7 +24,7 @@ hook-initiated turn, breaking the autonomous loop (see test_2 below).
 These tests drive the hook as a subprocess with a synthetic Stop envelope and a
 fixture transcript — the same way Claude Code invokes it. Every test is
 hermetic: `CLAUDE_PROJECT_DIR` is monkeypatched to `tmp_path`, so the
-`.overseer/` state and the idempotency file never touch the real repo or any
+`.claude/overseer/` state and the idempotency file never touch the real repo or any
 hardcoded global path.
 """
 
@@ -97,8 +97,8 @@ def write_transcript(path: Path, tool_uses: list[ToolUse]) -> Path:
 
 
 def write_phase(project_dir: Path, phase: str) -> None:
-    """Write `.overseer/state` under the (fixture) project root."""
-    overseer = project_dir / ".overseer"
+    """Write `.claude/overseer/state` under the (fixture) project root."""
+    overseer = project_dir / ".claude" / "overseer"
     overseer.mkdir(parents=True, exist_ok=True)
     (overseer / "state").write_text(phase, encoding="utf-8")
 
@@ -367,7 +367,7 @@ def test_8_plan_phase_skips_audit(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """In the planning phase the developer is designing, not completing units
-    of work — `.overseer/state` holding 'plan' suppresses the audit even when
+    of work — `.claude/overseer/state` holding 'plan' suppresses the audit even when
     both completion signals are present."""
     monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(tmp_path))
     write_phase(tmp_path, "plan")
@@ -418,7 +418,7 @@ def test_10_overseer_pass_continue_idempotent(
     flow forever on an unchanging PASS.
 
     Idempotency mirrors the audit-side SHA guard (see test_7), via the
-    `.overseer/.last_continue_sha` file. `tmp_path` is hermetic
+    `.claude/overseer/.last_continue_sha` file. `tmp_path` is hermetic
     per-test — the sha file is cleaned automatically when the test exits,
     no explicit teardown needed.
     """
@@ -450,5 +450,5 @@ def test_10_overseer_pass_continue_idempotent(
     )
 
     # The idempotency artifact lives at the canonical path
-    sha_file = tmp_path / ".overseer" / ".last_continue_sha"
+    sha_file = tmp_path / ".claude" / "overseer" / ".last_continue_sha"
     assert sha_file.is_file(), "expected .last_continue_sha to be written"

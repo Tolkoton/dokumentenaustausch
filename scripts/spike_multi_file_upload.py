@@ -7,9 +7,9 @@ Premise probe for submit-slice (Phase 0, A2 + A3):
     produce visible attachments.
 
 Owner runs this script; the script captures wire-level evidence into
-``artifacts/spikes/submit-multi-file-upload-2026-05-26.json``. Owner
+``.claude/artifacts/spikes/submit-multi-file-upload-2026-05-26.json``. Owner
 then logs into DATEV-UO and writes
-``artifacts/spikes/submit-sb-discovery-2026-05-26.md`` (spike #2 —
+``.claude/artifacts/spikes/submit-sb-discovery-2026-05-26.md`` (spike #2 —
 manual, owner-driven, no script).
 
 Spike-only liberty
@@ -66,7 +66,7 @@ from belegmeister.klardaten.client import KlardatenClient
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 FIXTURES_DIR = REPO_ROOT / "tests" / "fixtures"
-ARTIFACTS_DIR = REPO_ROOT / "artifacts" / "spikes"
+ARTIFACTS_DIR = REPO_ROOT / ".claude" / "artifacts" / "spikes"
 PDF_FIXTURE = FIXTURES_DIR / "spike_sample.pdf"
 JPG_FIXTURE = FIXTURES_DIR / "spike_sample.jpg"
 OUTPUT_PATH = ARTIFACTS_DIR / "submit-multi-file-upload-2026-05-26.json"
@@ -274,7 +274,7 @@ def main() -> int:
     print(f"  1. Log into DATEV-UO, navigate to VGM #{vgm_doknum}.")
     print("  2. Confirm both _spike_pdf_*.pdf and _spike_jpg_*.jpg attachments")
     print("     are visible inside the binder.")
-    print("  3. Write artifacts/spikes/submit-sb-discovery-2026-05-26.md with:")
+    print("  3. Write .claude/artifacts/spikes/submit-sb-discovery-2026-05-26.md with:")
     print("       - Both spike-uploaded docs visible in VGM contents: yes/no")
     print("       - Notification received: yes/no")
     print("       - Documents appeared without any push: yes/no")

@@ -15,9 +15,9 @@ memory pollution and confabulation amplification.
 - Slice ledger: `PROGRESS.md`
 - Architectural decisions: `docs/adr/`
 - TDD discipline: slice-builder skill
-- Overseer ledger: `.overseer/ledger.md`
-- Human escalations log: `.overseer/escalations.md`
-- Self-improvement proposals: `.overseer/audit.md`
+- Overseer ledger: `.claude/overseer/ledger.md`
+- Human escalations log: `.claude/overseer/escalations.md`
+- Self-improvement proposals: `.claude/overseer/audit.md`
 
 ## Cross-slice patterns
 

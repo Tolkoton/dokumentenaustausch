@@ -5,7 +5,7 @@
 - **Deciders:** Owner (sole developer)
 - **Supersedes:** none
 - **Related:** [ADR-0001](0001-resolver-perf-persisted-index.md);
-  `docs/DATEV-DEVELOPER-PORTAL.md`; `.architecture/phase-0-brief.md`
+  `docs/DATEV-DEVELOPER-PORTAL.md`; `.claude/architecture/phase-0-brief.md`
 
 ## Context
 

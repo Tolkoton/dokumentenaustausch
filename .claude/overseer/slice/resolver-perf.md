@@ -618,14 +618,14 @@ The Phase 2 OPEN cannot remain OPEN at slice exit. Owner commits a
 choice `N ∈ {15, 30, 60}` or a counter-value. Decision recorded in
 this file's §Open items section (replace `PENDING OWNER` with
 `RATIFIED N=NN on YYYY-MM-DD`), and a ledger entry
-`"N=NN ratified by owner YYYY-MM-DD"` appended to `.overseer/ledger.md`.
+`"N=NN ratified by owner YYYY-MM-DD"` appended to `.claude/overseer/ledger.md`.
 
 **Until ratified: Steps 1-10 forbidden.**
 
 ### Step 1 — Pre-smoke gate: 5 seam-tests verified passing in CI matrix
 
 ```bash
-pytest tests/ -v --tb=short 2>&1 | tee artifacts/resolver-perf-pytest-${SHA}.log
+pytest tests/ -v --tb=short 2>&1 | tee .claude/artifacts/resolver-perf-pytest-${SHA}.log
 ```
 
 CI workflow `.github/workflows/test.yml` updated with matrix:
@@ -659,7 +659,7 @@ Seam 1 `test_atomic_swap_concurrency_n_readers` runs on both via
 All seams are mock / `tmp_path` / subprocess — NO live DATEV.
 **Evidence:** CI run URL with both `ubuntu-latest` + `windows-latest`
 jobs PASSED; local pytest log captured at
-`artifacts/resolver-perf-pytest-${SHA}.log` (Linux only — Windows path
+`.claude/artifacts/resolver-perf-pytest-${SHA}.log` (Linux only — Windows path
 verified via CI URL).
 
 ### Step 2 — Pre-smoke environment reset (cold-start precondition)
@@ -684,8 +684,8 @@ can use any valid integer.
 
 ```bash
 uvicorn belegmeister.sb.app:app --port 8080 --log-level info \
-  > artifacts/resolver-perf-uvicorn-${SHA}.log 2>&1 &
-echo $! > artifacts/resolver-perf-uvicorn.pid
+  > .claude/artifacts/resolver-perf-uvicorn-${SHA}.log 2>&1 &
+echo $! > .claude/artifacts/resolver-perf-uvicorn.pid
 ```
 
 Wait until uvicorn log contains `"lifespan startup complete"` AND
@@ -699,7 +699,7 @@ Wait until uvicorn log contains `"lifespan startup complete"` AND
 for i in 1 2 3; do
   /usr/bin/time -f "wall=%e" python scripts/smoke_test_sb_form.py \
     --step 8b --target localhost:8080 --dokumentnummer 1 \
-    2>&1 | tee -a artifacts/resolver-perf-smoke-cold-${SHA}.log
+    2>&1 | tee -a .claude/artifacts/resolver-perf-smoke-cold-${SHA}.log
 done
 ```
 
@@ -719,7 +719,7 @@ containing the literal cold-start string.
 
 ```bash
 until grep -q "vgm index refresh complete" \
-    artifacts/resolver-perf-uvicorn-${SHA}.log; do
+    .claude/artifacts/resolver-perf-uvicorn-${SHA}.log; do
   sleep 5
 done
 ```
@@ -733,7 +733,7 @@ done
 Direct SQLite query, bypassing in-process resolver wiring:
 
 ```bash
-python - <<'PY' 2>&1 | tee artifacts/resolver-perf-precondition-${SHA}.log
+python - <<'PY' 2>&1 | tee .claude/artifacts/resolver-perf-precondition-${SHA}.log
 import sqlite3, sys, os
 from pathlib import Path
 base = (Path(os.environ["APPDATA"]) / "Belegmeister"
@@ -767,7 +767,7 @@ proceed to Step 6 only on OK.
 for i in 1 2 3; do
   /usr/bin/time -f "wall=%e" python scripts/smoke_test_sb_form.py \
     --step 8b --target localhost:8080 --dokumentnummer 99999999 \
-    2>&1 | tee -a artifacts/resolver-perf-smoke-steady-${SHA}.log
+    2>&1 | tee -a .claude/artifacts/resolver-perf-smoke-steady-${SHA}.log
 done
 ```
 
@@ -781,7 +781,7 @@ Each run produces uvicorn log line
 ### Step 7 — Graceful SB shutdown
 
 ```bash
-kill -TERM "$(cat artifacts/resolver-perf-uvicorn.pid)"
+kill -TERM "$(cat .claude/artifacts/resolver-perf-uvicorn.pid)"
 wait
 ```
 
@@ -795,11 +795,11 @@ with no error trace.
 
 ```bash
 python scripts/parse_smoke_results.py \
-  --pytest artifacts/resolver-perf-pytest-${SHA}.log \
-  --uvicorn artifacts/resolver-perf-uvicorn-${SHA}.log \
-  --smoke-cold artifacts/resolver-perf-smoke-cold-${SHA}.log \
-  --smoke-steady artifacts/resolver-perf-smoke-steady-${SHA}.log \
-  --output artifacts/resolver-perf-summary-${SHA}.json
+  --pytest .claude/artifacts/resolver-perf-pytest-${SHA}.log \
+  --uvicorn .claude/artifacts/resolver-perf-uvicorn-${SHA}.log \
+  --smoke-cold .claude/artifacts/resolver-perf-smoke-cold-${SHA}.log \
+  --smoke-steady .claude/artifacts/resolver-perf-smoke-steady-${SHA}.log \
+  --output .claude/artifacts/resolver-perf-summary-${SHA}.json
 ```
 
 `parse_smoke_results.py` is part of THIS slice's deliverables
@@ -819,9 +819,9 @@ PASS/FAIL against ≤ 1 s end-to-end + ≤ 50 ms internal.
 Dev session:
 - Updates `PROGRESS.md:470-471` placeholder → measurements per the
   template below.
-- `git add artifacts/resolver-perf-* PROGRESS.md`
-- `git status > artifacts/resolver-perf-staged-${SHA}.txt`
-- `git diff --cached --stat >> artifacts/resolver-perf-staged-${SHA}.txt`
+- `git add .claude/artifacts/resolver-perf-* PROGRESS.md`
+- `git status > .claude/artifacts/resolver-perf-staged-${SHA}.txt`
+- `git diff --cached --stat >> .claude/artifacts/resolver-perf-staged-${SHA}.txt`
 - **STOPS. Does NOT commit.**
 
 Replace `<TBD — mandatory before close>` at `PROGRESS.md:470-471` with
@@ -842,8 +842,8 @@ EXACT template:
     - 3 ms values: X.Xms, Y.Yms, Z.Zms
     - max(3) = M.Mms; threshold ≤50ms → PASS|FAIL
   - **N (refresh interval)**: NN min — owner-ratified YYYY-MM-DD via
-    .overseer/slice/resolver-perf.md Step 0
-  - **Artifact bundle**: artifacts/resolver-perf-{SHA}.* (6 files: pytest log,
+    .claude/overseer/slice/resolver-perf.md Step 0
+  - **Artifact bundle**: .claude/artifacts/resolver-perf-{SHA}.* (6 files: pytest log,
     CI run URL, uvicorn log, smoke-cold log, smoke-steady log, precondition log,
     summary.json)
   - **Status**: CLOSED if all three max(3) ≤ threshold; otherwise BLOCKED with
@@ -851,12 +851,12 @@ EXACT template:
 ```
 
 **Evidence:** staged state captured in
-`artifacts/resolver-perf-staged-${SHA}.txt`; no git log entry yet.
+`.claude/artifacts/resolver-perf-staged-${SHA}.txt`; no git log entry yet.
 
 ### Step 10 — Owner verifies + commits (single commit)
 
 Owner:
-- Reviews `artifacts/` bundle: pytest log, CI URL (Windows job), uvicorn
+- Reviews `.claude/artifacts/` bundle: pytest log, CI URL (Windows job), uvicorn
   log, smoke-cold log, smoke-steady log, precondition log, summary JSON.
 - Runs `git diff --cached` locally; reads PROGRESS.md replacement.
 - Computes PASS/FAIL verdict per `max(3) ≤ threshold` per path.
@@ -865,7 +865,7 @@ Owner:
   ```
   slice 4b resolver-perf: measurements recorded by dev session, owner
   verified all max(3) ≤ threshold, status CLOSED. Artifact bundle
-  artifacts/resolver-perf-${SHA}.*
+  .claude/artifacts/resolver-perf-${SHA}.*
   ```
 - **If any FAIL:** edits PROGRESS.md status line to re-anchor `BLOCKED`
   to the specific failing path + value; commits:

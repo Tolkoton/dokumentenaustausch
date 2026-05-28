@@ -38,7 +38,7 @@ Procedure
    (`structure_item_id="0"`, `document_file_id=0`). Record status.
    Tells us whether "delete a never-existed id" looks the same as
    "delete an already-deleted id" — affects rollback idempotency design.
-7. Write `artifacts/spikes/klardaten-delete-semantics-2026-05-26.json`.
+7. Write `.claude/artifacts/spikes/klardaten-delete-semantics-2026-05-26.json`.
 
 Output schema
 -------------
@@ -121,7 +121,7 @@ from dotenv import load_dotenv
 from belegmeister.klardaten.client import KlardatenClient
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-ARTIFACTS_DIR = REPO_ROOT / "artifacts" / "spikes"
+ARTIFACTS_DIR = REPO_ROOT / ".claude" / "artifacts" / "spikes"
 OUTPUT_PATH = ARTIFACTS_DIR / "klardaten-delete-semantics-2026-05-26.json"
 
 DEFAULT_BINDER_GUID = "4c83e94e-24e7-4866-809c-5e983ad7f485"  # VGM 395357, dev

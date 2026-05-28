@@ -27,7 +27,7 @@ For each candidate size in 25 / 50 / 100 / 200 MB:
 
 Output
 ------
-``artifacts/spikes/klardaten-size-envelope-2026-05-26.json``::
+``.claude/artifacts/spikes/klardaten-size-envelope-2026-05-26.json``::
 
     {
       "vgm_binder_guid": "...",
@@ -92,7 +92,7 @@ from dotenv import load_dotenv
 from belegmeister.klardaten.client import KlardatenClient
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-ARTIFACTS_DIR = REPO_ROOT / "artifacts" / "spikes"
+ARTIFACTS_DIR = REPO_ROOT / ".claude" / "artifacts" / "spikes"
 OUTPUT_PATH = ARTIFACTS_DIR / "klardaten-size-envelope-2026-05-26.json"
 
 DEFAULT_BINDER_GUID = "4c83e94e-24e7-4866-809c-5e983ad7f485"  # VGM 395357, dev

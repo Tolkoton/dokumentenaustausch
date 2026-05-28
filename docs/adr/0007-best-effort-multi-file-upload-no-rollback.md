@@ -4,15 +4,15 @@
 - **Date:** 2026-05-27
 - **Deciders:** Owner (sole developer)
 - **References:**
-  - `.overseer/slice/submit-handler.md` (Phase 2 decisions D6, D8, D4, D5)
+  - `.claude/overseer/slice/submit-handler.md` (Phase 2 decisions D6, D8, D4, D5)
   - [ADR-0006](0006-binder-as-state-store-for-replay-policy.md) — the
     replay policy whose burn marker is the response doc this ADR
     governs.
-  - `artifacts/spikes/klardaten-delete-semantics-2026-05-26.json` —
+  - `.claude/artifacts/spikes/klardaten-delete-semantics-2026-05-26.json` —
     empirical falsification of premise A9.
-  - `artifacts/spikes/klardaten-size-envelope-2026-05-26.json` —
+  - `.claude/artifacts/spikes/klardaten-size-envelope-2026-05-26.json` —
     empirical premise A5 (uploads succeed up to 200 MB).
-  - `artifacts/spikes/submit-sb-discovery-2026-05-26.md` — empirical
+  - `.claude/artifacts/spikes/submit-sb-discovery-2026-05-26.md` — empirical
     premise A4 (SB sees attachments via manual DATEV-UO inspection;
     no notification channel).
 
