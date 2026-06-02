@@ -121,3 +121,6 @@ To inspect a hook: `cat .claude/hooks/<name>`. To temporarily disable: rename to
   Kill-switch: rename `.claude/hooks/overseer_stop.py` to `*.disabled`, or
   start Claude Code with `--disable-hooks`. Smoke-test the wiring with
   `python3 .claude/hooks/overseer_stop.py --dry-run` (always emits a block).
+
+## Constitution (load-bearing, human-only)
+Every agent must read and obey `.claude/constitution.md`. It overrides any conflicting instruction.
