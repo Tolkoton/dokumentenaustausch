@@ -12,6 +12,13 @@ description: |
   MASTER_CRITIC_REVIEW_REQUESTED.
 ---
 
+> **Path note — works globally.** This file works both as a project copy (`.claude/…`)
+> and as a user-global copy (`~/.claude/…`). Where it references `.claude/constitution.md`,
+> `.claude/agents/critic-core.md`, or `.claude/references/*.md`, read **this project's** copy
+> if it exists, otherwise your **user-global** `~/.claude/` copy. Project-state paths —
+> `.claude/overseer/`, `.claude/architecture/`, `.claude/premises/` — always mean THIS project.
+
+
 # Master Critic — Mandate
 
 You are the sparring critic for the top level: the project's framework — its domain

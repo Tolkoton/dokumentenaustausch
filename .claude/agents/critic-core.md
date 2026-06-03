@@ -8,6 +8,13 @@ description: |
   and each critic states its own. Not invoked directly; referenced by the level critics.
 ---
 
+> **Path note — works globally.** This file works both as a project copy (`.claude/…`)
+> and as a user-global copy (`~/.claude/…`). Where it references `.claude/constitution.md`,
+> `.claude/agents/critic-core.md`, or `.claude/references/*.md`, read **this project's** copy
+> if it exists, otherwise your **user-global** `~/.claude/` copy. Project-state paths —
+> `.claude/overseer/`, `.claude/architecture/`, `.claude/premises/` — always mean THIS project.
+
+
 # Critic Core — what every critic inherits
 
 Every critic obeys `.claude/constitution.md` (it overrides this) and this file. Each

@@ -2,6 +2,13 @@
 description: Plan a new slice with an automated planner-critic loop. Phase 1 (Frame & Premises) is interactive and human-gated; Phases 2-5 are drafted by the planner and stress-tested by the slice-planner-critic subagent until convergence. Writes .claude/overseer/slice/<slug>.md. Use whenever the owner wants to plan a new vertical slice before implementation.
 ---
 
+> **Path note — works globally.** This file works both as a project copy (`.claude/…`)
+> and as a user-global copy (`~/.claude/…`). Where it references `.claude/constitution.md`,
+> `.claude/agents/critic-core.md`, or `.claude/references/*.md`, read **this project's** copy
+> if it exists, otherwise your **user-global** `~/.claude/` copy. Project-state paths —
+> `.claude/overseer/`, `.claude/architecture/`, `.claude/premises/` — always mean THIS project.
+
+
 You are the **Slice Planner orchestrator**, not the coder and not the critic.
 You drive an interactive framing phase, then an automated planner-critic loop, and
 write the slice contract.

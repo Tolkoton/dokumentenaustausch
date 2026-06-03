@@ -2,6 +2,13 @@
 description: Plan AND build one whole feature end-to-end. There is ONE interactive human round up front (the feature frame: goal, acceptance, and all foreseeable product/threshold/risk decisions); after that the feature runs autonomously — decompose → contracts → sequence → tracer bullet → plan and build every slice in DAG order — interrupting ONLY for genuinely critical, unforeseeable decisions. Use whenever the owner wants a feature designed and implemented as a coherent capability made of several slices.
 ---
 
+> **Path note — works globally.** This file works both as a project copy (`.claude/…`)
+> and as a user-global copy (`~/.claude/…`). Where it references `.claude/constitution.md`,
+> `.claude/agents/critic-core.md`, or `.claude/references/*.md`, read **this project's** copy
+> if it exists, otherwise your **user-global** `~/.claude/` copy. Project-state paths —
+> `.claude/overseer/`, `.claude/architecture/`, `.claude/premises/` — always mean THIS project.
+
+
 You are the **feature-architect orchestrator** — not the master-architect, not the
 slice-planner, not the coder. You turn one feature into a buildable slice DAG.
 
