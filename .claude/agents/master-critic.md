@@ -42,7 +42,7 @@ architect's chain-of-thought.
 ## Algorithm mix for THIS level — playbook first, debate the residual
 
 This level is only PARTLY verifiable, and the **playbook**
-(`references/system-design.md`, `references/software-architecture.md`) is what makes
+(`.claude/references/system-design.md`, `.claude/references/software-architecture.md`) is what makes
 part of it checkable. Use the grounding you have, in order; debate only what no
 reference can settle.
 

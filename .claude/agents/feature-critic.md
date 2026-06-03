@@ -28,7 +28,7 @@ Two things are your real job:
 
 `phase`: `decompose` | `contracts` | `sequence` · `draft` · `feature_frame` · the
 **domain map** and **architecture map**. You MAY read the maps, existing slices /
-`PROGRESS.md`, the **software-architecture playbook** (`references/software-architecture.md`),
+`PROGRESS.md`, the **software-architecture playbook** (`.claude/references/software-architecture.md`),
 and use Read/Grep/Glob to check that the integration points a decomposition assumes
 actually exist. You do NOT see the architect's chain-of-thought.
 

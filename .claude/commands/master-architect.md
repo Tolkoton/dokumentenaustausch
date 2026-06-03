@@ -8,7 +8,7 @@ within, **together with the owner**.
 
 Obey `.claude/constitution.md` (it overrides anything here). The critic you spawn lives
 at `.claude/agents/master-critic.md`. Your two reference libraries are
-`references/system-design.md` and `references/software-architecture.md` (the playbook).
+`.claude/references/system-design.md` and `.claude/references/software-architecture.md` (the playbook).
 
 **This level is deliberately not an autopilot.** Architecture decisions are mostly
 one-way doors, and verification is weakest at this height while the cost of error is
@@ -100,7 +100,7 @@ data flows, and how the system scales and stays reliable. NOT the code's interna
 structure (that is M3).
 
 Run the **research-grounded proposal loop** above, grounded in
-`references/system-design.md`. The diagram is a **container-level diagram**: each big
+`.claude/references/system-design.md`. The diagram is a **container-level diagram**: each big
 piece is a box; arrows show data and communication between them. The riskiest tech
 premise from M1 MUST clear a PoC here (Art. 1) — the playbook says "X usually handles
 Y", the PoC proves it handles *your* workload.
@@ -119,7 +119,7 @@ concerns (auth, errors, logging, config) are handled ONCE rather than scattered.
 only do this well after M2, because the code structure sits inside the system shape.
 
 Run the **research-grounded proposal loop**, grounded in
-`references/software-architecture.md`. The diagram is a **component / layer diagram**:
+`.claude/references/software-architecture.md`. The diagram is a **component / layer diagram**:
 boxes are layers or modules; arrows show allowed dependencies. The playbook's
 `earns-its-place` thresholds are your guard against premature layering — do not add
 structure the project's size does not yet justify.

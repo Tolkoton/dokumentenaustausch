@@ -20,6 +20,21 @@ Pre-flight:
   down for the whole planning session (the phase guard skips audits while state is
   `plan`). Clear it only at the very end.
 
+## Two modes
+
+- **Standalone** (the owner runs `/plan-slice` directly): Phase 1 is interactive and
+  human-gated, exactly as written below.
+- **Driven** (the feature-architect invokes this for a slice in a DAG): Phase 1 is
+  **supplied, not asked**. The slice's goal/scope come from the feature artifact's
+  entry for this slice; its premises inherit the feature's verified premises; its build
+  parameters (thresholds, policies, risk tolerance) come from the feature artifact's
+  "Build parameters". Do NOT prompt the owner. Any gate that would prompt — a Phase-4
+  threshold not covered by the build parameters, a `CRITIC_PREMISE_PROBE_REQUIRED`, a
+  `CRITIC_ESCALATE`, a `CRITIC_WRONG_SCOPE` — **routes UP to the feature-architect's
+  interrupt filter** instead of to the owner. In driven mode a premise spike that PASSES
+  proceeds silently; only a FALSIFIED premise bubbles up. Everything below runs the
+  same; only *who answers the gates* changes.
+
 ---
 
 # Phase 1 — Frame & Premises  (INTERACTIVE, human-gated)
@@ -78,7 +93,6 @@ round = 0
 draft = YOU (as planner) draft this phase's section
         — read the repo READ-ONLY for grounding (Read/Grep/Glob/Bash-inspect)
         — write ONLY into the in-progress artifact draft; NEVER src/ or tests/
-draft_initial = draft        # snapshot for the end-of-phase ceremony check
 
 loop:
   # Spawn the critic as a fresh-context subagent (Task tool).
@@ -113,16 +127,7 @@ loop:
       rounds — owner ruling needed", options from the open objection); 
       emit OVERSEER_SLICE_AWAITING_OWNER and stop.
 
-# End-of-phase ceremony check (DIAGNOSTIC, not a gate) — ONE implementer-diff call,
-# only if the phase actually revised (draft moved from its initial snapshot):
-if draft != draft_initial:
-    diff = Task(agent="implementer-diff", input={before: draft_initial, after: draft})
-    # implementer-diff returns {seam, behavior_list, smoke} for each version.
-    ceremony = (diff.before == diff.after)   # true → the loop changed NOTHING the slice-builder would do
-    record in the ledger: "phase <n>: <round+1> critic rounds, ceremony=<ceremony>"
-    # Do NOT block on ceremony=true. It is a calibration signal: a loop that ran
-    # several rounds yet changed nothing the implementer would do suggests the
-    # critic may be raising cosmetic objections → flag for failure-injection.
+# Record in the ledger: "phase <n>: <round+1> critic rounds".
 
 # Phase 4 special — threshold ratification is a HARD HUMAN GATE.
 if phase == 4 and the exit criterion contains a threshold value or a qualitative
@@ -147,11 +152,10 @@ NO round history. This catches what the round-anchored critic drifted past
 - `CRITIC_PREMISE_PROBE_REQUIRED` / `CRITIC_ESCALATE` → route to the human gate as
   above before writing.
 
-*(Calibration, ~every 5th slice OR whenever a phase logged `ceremony=true`: submit a
-deliberately shallow counterfactual artifact to the cold-reader in a blind pair. If
-it does not rate the real artifact above the counterfactual, the critic is
-mis-calibrated — halt and retune its prompt before trusting further runs. The
-`ceremony=true` flag from the per-phase diagnostic is the cheapest trigger for this.)*
+*(Calibration, ~every 5th slice: submit a deliberately shallow counterfactual artifact
+to the cold-reader in a blind pair. If it does not rate the real artifact above the
+counterfactual, the critic is mis-calibrated — halt and retune its prompt before
+trusting further runs.)*
 
 ---
 
@@ -226,17 +230,14 @@ smoke); threshold owner-ratified if present]
 
 - **Planner writes no code.** Read-only over the repo; writes ONLY the artifact.
   Never `src/`, `tests/`, or `scripts/`. The downstream slice-builder implements.
-- **The critic, implementer-diff, and cold-reader are READ-only subagents** in
-  separate context. The critic is BLIND to your reasoning — pass it only the draft
-  + Frame & Premises.
+- **The critic and cold-reader are READ-only subagents** in separate context. The
+  critic is BLIND to your reasoning — pass it only the draft + Frame & Premises.
 - **Honor harness markers.** Emit `OVERSEER_SLICE_AWAITING_OWNER:` on any human
   gate (premise back-edge, escalation, threshold ratification, 4-round oscillation,
   cold-reader re-block). Never silently continue past a gate.
 - **Convergence is the critic's BLOCKING signal, not friction.** The loop ends
   when the critic returns `CRITIC_PASS`; it never advances on round count alone
-  (round 4 is only a circuit-breaker → escalate). The end-of-phase implementer-diff
-  is a DIAGNOSTIC — did the loop change anything the slice-builder would do? — not
-  a gate. A `ceremony=true` result is a calibration flag, not a block.
+  (round 4 is only a circuit-breaker → escalate).
 - **Do NOT skip Phase 1 or its premise HARD GATE.** Do NOT skip the cold-reader.
 - **Do NOT create ADRs unilaterally** — surface them via CRITIC_ESCALATE
   (ADR_RATIFICATION) and let the owner ratify.
